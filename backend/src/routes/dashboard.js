@@ -1,9 +1,9 @@
+// VERSAO CORRIGIDA - USA PROJECT_ID, NAO USER_ID!
 const express = require("express")
 const router = express.Router()
 const { supabase } = require("../config/supabase")
 
 // GET /api/dashboard - Get dashboard stats
-// Uses project_id through projects table, NOT user_id directly
 router.get("/", async (req, res) => {
   try {
     const userId = req.user?.id
@@ -25,7 +25,7 @@ router.get("/", async (req, res) => {
 
     const projectIds = projects.map((p) => p.id)
 
-    // Get instances count using project_id
+    // Get instances using PROJECT_ID (not user_id!)
     const { data: instances } = await supabase
       .from("whatsapp_instances")
       .select("id, status")
@@ -34,10 +34,8 @@ router.get("/", async (req, res) => {
     const totalInstances = instances?.length || 0
     const connectedInstances = instances?.filter((i) => i.status === "connected").length || 0
 
-    // Get instance IDs for further queries
     const instanceIds = instances?.map((i) => i.id) || []
 
-    // Get messages count
     let totalMessages = 0
     if (instanceIds.length > 0) {
       const { count } = await supabase
@@ -47,7 +45,6 @@ router.get("/", async (req, res) => {
       totalMessages = count || 0
     }
 
-    // Get contacts count
     let totalContacts = 0
     if (instanceIds.length > 0) {
       const { count } = await supabase

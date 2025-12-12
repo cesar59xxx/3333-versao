@@ -1,3 +1,4 @@
+// VERSAO CORRIGIDA - USA PROJECT_ID, NAO USER_ID!
 const express = require("express")
 const router = express.Router()
 const { supabase } = require("../config/supabase")
@@ -5,7 +6,6 @@ const { ClientManager } = require("../whatsapp/clientManager")
 
 let clientManager = null
 
-// Initialize client manager lazily
 function getClientManager(io) {
   if (!clientManager) {
     clientManager = new ClientManager(io)
@@ -14,7 +14,6 @@ function getClientManager(io) {
 }
 
 // GET /api/instances - List all instances for user's projects
-// Uses project_id through projects table, NOT user_id directly
 router.get("/", async (req, res) => {
   try {
     const userId = req.user?.id
@@ -36,7 +35,7 @@ router.get("/", async (req, res) => {
 
     const projectIds = projects.map((p) => p.id)
 
-    // Then get instances for those projects using project_id
+    // Get instances using PROJECT_ID (not user_id!)
     const { data: instances, error } = await supabase
       .from("whatsapp_instances")
       .select("*")
@@ -56,7 +55,6 @@ router.get("/", async (req, res) => {
 })
 
 // POST /api/instances - Create new instance
-// Uses project_id, NOT user_id
 router.post("/", async (req, res) => {
   try {
     const userId = req.user?.id
@@ -84,7 +82,7 @@ router.post("/", async (req, res) => {
       if (existingProject) {
         targetProjectId = existingProject.id
       } else {
-        // Create a default project
+        // Create default project
         const { data: newProject, error: createError } = await supabase
           .from("projects")
           .insert({
@@ -115,7 +113,7 @@ router.post("/", async (req, res) => {
       return res.status(403).json({ error: "Access denied to this project" })
     }
 
-    // Create instance with project_id (NOT user_id!)
+    // Create instance with PROJECT_ID (not user_id!)
     const { data: instance, error } = await supabase
       .from("whatsapp_instances")
       .insert({
@@ -138,7 +136,7 @@ router.post("/", async (req, res) => {
   }
 })
 
-// POST /api/instances/:id/connect - Connect instance and get QR code
+// POST /api/instances/:id/connect
 router.post("/:id/connect", async (req, res) => {
   try {
     const userId = req.user?.id
@@ -149,7 +147,7 @@ router.post("/:id/connect", async (req, res) => {
     const { id } = req.params
     const io = req.app.get("io")
 
-    // Verify user has access to this instance through project ownership
+    // Verify access through project ownership
     const { data: instance, error: instanceError } = await supabase
       .from("whatsapp_instances")
       .select("*, projects!inner(owner_id)")
@@ -174,7 +172,7 @@ router.post("/:id/connect", async (req, res) => {
   }
 })
 
-// POST /api/instances/:id/disconnect - Disconnect instance
+// POST /api/instances/:id/disconnect
 router.post("/:id/disconnect", async (req, res) => {
   try {
     const userId = req.user?.id
@@ -185,7 +183,6 @@ router.post("/:id/disconnect", async (req, res) => {
     const { id } = req.params
     const io = req.app.get("io")
 
-    // Verify access
     const { data: instance } = await supabase
       .from("whatsapp_instances")
       .select("*, projects!inner(owner_id)")
@@ -206,7 +203,7 @@ router.post("/:id/disconnect", async (req, res) => {
   }
 })
 
-// DELETE /api/instances/:id - Delete instance
+// DELETE /api/instances/:id
 router.delete("/:id", async (req, res) => {
   try {
     const userId = req.user?.id
@@ -217,7 +214,6 @@ router.delete("/:id", async (req, res) => {
     const { id } = req.params
     const io = req.app.get("io")
 
-    // Verify access
     const { data: instance } = await supabase
       .from("whatsapp_instances")
       .select("*, projects!inner(owner_id)")
@@ -228,11 +224,9 @@ router.delete("/:id", async (req, res) => {
       return res.status(403).json({ error: "Access denied" })
     }
 
-    // Stop client if running
     const manager = getClientManager(io)
     await manager.stopClient(id)
 
-    // Delete from database
     const { error } = await supabase.from("whatsapp_instances").delete().eq("id", id)
 
     if (error) {
