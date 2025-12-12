@@ -1,60 +1,75 @@
 "use client"
 
-import { useProjects } from "@/lib/hooks/use-projects"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { useState, useEffect } from "react"
+import { createClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
+import { Card } from "@/components/ui/card"
 import Link from "next/link"
-import { Plus } from "lucide-react"
+
+interface Project {
+  id: string
+  name: string
+  created_at: string
+}
 
 export default function DashboardPage() {
-  const { projects, loading } = useProjects()
+  const [projects, setProjects] = useState<Project[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    async function loadProjects() {
+      try {
+        const supabase = createClient()
+        const { data } = await supabase.from("projects").select("*").order("created_at", { ascending: false })
+        setProjects(data || [])
+      } catch (error) {
+        console.error("[v0] Error loading projects:", error)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    loadProjects()
+  }, [])
 
   if (loading) {
     return (
       <div className="flex h-screen items-center justify-center">
-        <p className="text-lg text-muted-foreground">Carregando...</p>
+        <p>Carregando...</p>
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen bg-background">
-      <div className="mx-auto max-w-6xl px-4 py-8">
+    <div className="min-h-screen bg-white p-8">
+      <div className="max-w-4xl mx-auto">
         <div className="mb-8">
-          <h1 className="text-3xl font-bold">Dashboard</h1>
-          <p className="text-muted-foreground">Gerencie seus projetos e instâncias</p>
+          <h1 className="text-4xl font-bold mb-2">Meus Projetos</h1>
+          <p className="text-gray-600">Gerencie seus projetos WhatsApp</p>
         </div>
 
-        {projects.length === 0 ? (
-          <Card>
-            <CardContent className="flex flex-col items-center justify-center py-12">
-              <p className="mb-4 text-muted-foreground">Nenhum projeto criado ainda</p>
-              <Button asChild>
-                <Link href="/projects/create">
-                  <Plus className="mr-2 h-4 w-4" />
-                  Criar Projeto
-                </Link>
-              </Button>
-            </CardContent>
-          </Card>
-        ) : (
-          <div className="grid gap-4">
-            {projects.map((project) => (
+        <div className="mb-6">
+          <Link href="/projects/new">
+            <Button className="bg-green-600 hover:bg-green-700 text-white">+ Novo Projeto</Button>
+          </Link>
+        </div>
+
+        <div className="grid gap-4">
+          {projects.length === 0 ? (
+            <Card className="p-8 text-center text-gray-500">Nenhum projeto criado ainda</Card>
+          ) : (
+            projects.map((project) => (
               <Link key={project.id} href={`/projects/${project.id}`}>
-                <Card className="cursor-pointer hover:bg-accent">
-                  <CardHeader>
-                    <CardTitle>{project.name}</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <p className="text-sm text-muted-foreground">
-                      Criado em {new Date(project.created_at).toLocaleDateString("pt-BR")}
-                    </p>
-                  </CardContent>
+                <Card className="p-6 hover:shadow-lg transition-shadow cursor-pointer">
+                  <h2 className="text-xl font-semibold text-black">{project.name}</h2>
+                  <p className="text-sm text-gray-500 mt-2">
+                    {new Date(project.created_at).toLocaleDateString("pt-BR")}
+                  </p>
                 </Card>
               </Link>
-            ))}
-          </div>
-        )}
+            ))
+          )}
+        </div>
       </div>
     </div>
   )
