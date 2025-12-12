@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { Button } from "@/components/ui/button"
 import { ContactList } from "@/components/chat/contact-list"
 import { ChatHeader } from "@/components/chat/chat-header"
@@ -10,6 +10,7 @@ import { useContacts } from "@/lib/hooks/use-contacts"
 import { useMessages } from "@/lib/hooks/use-messages"
 import { useSocket } from "@/lib/hooks/use-socket"
 import { apiRequest } from "@/lib/api/client"
+import type { Message } from "@/lib/types/database"
 import Link from "next/link"
 import { ArrowLeft } from "lucide-react"
 
@@ -29,36 +30,33 @@ export function ChatContent({ instanceId, instanceName }: ChatContentProps) {
   } = useMessages(instanceId, selectedContactId)
   const { socket } = useSocket()
 
-  const selectedContact = contacts.find((c) => c.id === selectedContactId)
+  const selectedContact = contacts.find((c) => c.id === selectedContactId) ?? null
 
   // Listen for new messages via Socket.IO
   useEffect(() => {
     if (!socket) return
 
-    socket.on("message_received", (data: { instanceId: string; contactId: string; message: any }) => {
-      console.log("[v0] Message received:", data)
-
+    const handleMessageReceived = (data: { instanceId: string; contactId: string; message: Message }) => {
       if (data.instanceId === instanceId) {
-        // Refresh contacts list to update last message
         refetchContacts()
-
-        // If the message is for the currently selected contact, add it to the list
         if (data.contactId === selectedContactId) {
           addMessage(data.message)
         }
       }
-    })
+    }
+
+    socket.on("message_received", handleMessageReceived)
 
     return () => {
-      socket.off("message_received")
+      socket.off("message_received", handleMessageReceived)
     }
   }, [socket, instanceId, selectedContactId, addMessage, refetchContacts])
 
-  const handleSendMessage = async (content: string) => {
-    if (!selectedContactId) return
+  const handleSendMessage = useCallback(
+    async (content: string) => {
+      if (!selectedContactId) return
 
-    try {
-      const message = await apiRequest(`/api/instances/${instanceId}/messages`, {
+      const message = await apiRequest<Message>(`/api/instances/${instanceId}/messages`, {
         method: "POST",
         body: JSON.stringify({
           contactId: selectedContactId,
@@ -67,12 +65,10 @@ export function ChatContent({ instanceId, instanceName }: ChatContentProps) {
       })
 
       addMessage(message)
-      refetchContacts() // Update contact list
-    } catch (error) {
-      console.error("[v0] Error sending message:", error)
-      throw error
-    }
-  }
+      refetchContacts()
+    },
+    [instanceId, selectedContactId, addMessage, refetchContacts],
+  )
 
   return (
     <div className="flex h-screen flex-col">
@@ -98,8 +94,7 @@ export function ChatContent({ instanceId, instanceName }: ChatContentProps) {
       </header>
 
       <div className="flex flex-1 overflow-hidden">
-        {/* Contacts Sidebar */}
-        <div className="w-80 flex-shrink-0">
+        <div className="w-80 flex-shrink-0 border-r">
           {contactsLoading ? (
             <div className="flex h-full items-center justify-center">
               <p className="text-muted-foreground">Carregando contatos...</p>
@@ -113,9 +108,8 @@ export function ChatContent({ instanceId, instanceName }: ChatContentProps) {
           )}
         </div>
 
-        {/* Chat Area */}
         <div className="flex flex-1 flex-col">
-          <ChatHeader contact={selectedContact || null} instanceName={instanceName} />
+          <ChatHeader contact={selectedContact} instanceName={instanceName} />
 
           {selectedContactId ? (
             <>

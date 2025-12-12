@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useCallback } from "react"
 import { Check, ChevronsUpDown, Plus } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
@@ -35,6 +35,24 @@ export function ProjectSelector({
 
   const selectedProject = projects.find((p) => p.id === selectedProjectId)
 
+  const handleSelect = useCallback(
+    (projectId: string) => {
+      onSelectProject(projectId)
+      setOpen(false)
+    },
+    [onSelectProject],
+  )
+
+  const handleCreateClick = useCallback(() => {
+    setOpen(false)
+    setShowCreateDialog(true)
+  }, [])
+
+  const handleProjectCreated = useCallback(() => {
+    onProjectCreated()
+    setShowCreateDialog(false)
+  }, [onProjectCreated])
+
   return (
     <>
       <Popover open={open} onOpenChange={setOpen}>
@@ -45,25 +63,18 @@ export function ProjectSelector({
             aria-expanded={open}
             className="w-full justify-between bg-transparent"
           >
-            {selectedProject ? selectedProject.name : "Selecione um projeto"}
+            <span className="truncate">{selectedProject?.name ?? "Selecione um projeto"}</span>
             <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
           </Button>
         </PopoverTrigger>
-        <PopoverContent className="w-full p-0">
+        <PopoverContent className="w-full p-0" align="start">
           <Command>
             <CommandInput placeholder="Buscar projeto..." />
             <CommandList>
               <CommandEmpty>Nenhum projeto encontrado.</CommandEmpty>
               <CommandGroup>
                 {projects.map((project) => (
-                  <CommandItem
-                    key={project.id}
-                    value={project.id}
-                    onSelect={() => {
-                      onSelectProject(project.id)
-                      setOpen(false)
-                    }}
-                  >
+                  <CommandItem key={project.id} value={project.id} onSelect={() => handleSelect(project.id)}>
                     <Check
                       className={cn("mr-2 h-4 w-4", selectedProjectId === project.id ? "opacity-100" : "opacity-0")}
                     />
@@ -73,12 +84,7 @@ export function ProjectSelector({
               </CommandGroup>
               <CommandSeparator />
               <CommandGroup>
-                <CommandItem
-                  onSelect={() => {
-                    setOpen(false)
-                    setShowCreateDialog(true)
-                  }}
-                >
+                <CommandItem onSelect={handleCreateClick}>
                   <Plus className="mr-2 h-4 w-4" />
                   Criar novo projeto
                 </CommandItem>
@@ -91,10 +97,7 @@ export function ProjectSelector({
       <CreateProjectDialog
         open={showCreateDialog}
         onOpenChange={setShowCreateDialog}
-        onSuccess={() => {
-          onProjectCreated()
-          setShowCreateDialog(false)
-        }}
+        onSuccess={handleProjectCreated}
       />
     </>
   )

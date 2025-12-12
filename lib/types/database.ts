@@ -1,5 +1,6 @@
-export type InstanceStatus = "CREATED" | "QR_PENDING" | "CONNECTED" | "DISCONNECTED" | "ERROR"
-export type MessageDirection = "INBOUND" | "OUTBOUND"
+// Status types - lowercase to match database values
+export type InstanceStatus = "created" | "qr_pending" | "connected" | "disconnected" | "error"
+export type MessageDirection = "inbound" | "outbound"
 
 export interface User {
   id: string
@@ -16,12 +17,13 @@ export interface Project {
 
 export interface WhatsAppInstance {
   id: string
-  project_id: string
+  project_id: string | null
+  user_id: string | null
   name: string
   phone_number: string | null
   status: InstanceStatus
   last_qr: string | null
-  session_data: any | null
+  session_data: unknown
   last_connected_at: string | null
   created_at: string
   updated_at: string
@@ -57,7 +59,7 @@ export interface SalesEvent {
   amount: number
   currency: string
   status: string
-  metadata: any | null
+  metadata: unknown
   created_at: string
   event_date: string
 }

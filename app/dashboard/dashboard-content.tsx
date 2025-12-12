@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button"
 import Link from "next/link"
 
 export function DashboardContent() {
-  const { projects, loading: projectsLoading } = useProjects()
+  const { projects, loading: projectsLoading, refetch: refetchProjects } = useProjects()
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null)
   const { metrics, loading: metricsLoading } = useDashboardMetrics(selectedProjectId)
 
@@ -60,7 +60,7 @@ export function DashboardContent() {
                   projects={projects}
                   selectedProjectId={selectedProjectId}
                   onSelectProject={setSelectedProjectId}
-                  onProjectCreated={() => window.location.reload()}
+                  onProjectCreated={refetchProjects}
                 />
               )}
             </div>
@@ -68,7 +68,7 @@ export function DashboardContent() {
 
           {metricsLoading ? (
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-              {[...Array(4)].map((_, i) => (
+              {Array.from({ length: 4 }).map((_, i) => (
                 <div key={i} className="h-32 rounded-lg border bg-card animate-pulse" />
               ))}
             </div>

@@ -1,38 +1,40 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useState, useCallback } from "react"
 import { apiRequest } from "@/lib/api/client"
 import type { DashboardMetrics } from "@/lib/types/database"
 
 export function useDashboardMetrics(projectId: string | null) {
   const [metrics, setMetrics] = useState<DashboardMetrics | null>(null)
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  useEffect(() => {
+  const fetchMetrics = useCallback(async () => {
     if (!projectId) {
+      setMetrics(null)
       setLoading(false)
       return
     }
 
-    async function fetchMetrics() {
-      try {
-        setLoading(true)
-        const data = await apiRequest(`/api/dashboard?projectId=${projectId}`)
-        setMetrics(data)
-      } catch (err: any) {
-        console.error("[v0] Error fetching metrics:", err)
-        setError(err.message)
-      } finally {
-        setLoading(false)
-      }
+    try {
+      setLoading(true)
+      setError(null)
+      const data = await apiRequest<DashboardMetrics>(`/api/dashboard?projectId=${projectId}`)
+      setMetrics(data)
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to fetch metrics"
+      setError(message)
+      setMetrics(null)
+    } finally {
+      setLoading(false)
     }
-
-    fetchMetrics()
-    const interval = setInterval(fetchMetrics, 30000) // Refresh every 30s
-
-    return () => clearInterval(interval)
   }, [projectId])
 
-  return { metrics, loading, error }
+  useEffect(() => {
+    fetchMetrics()
+    const interval = setInterval(fetchMetrics, 30000)
+    return () => clearInterval(interval)
+  }, [fetchMetrics])
+
+  return { metrics, loading, error, refetch: fetchMetrics }
 }

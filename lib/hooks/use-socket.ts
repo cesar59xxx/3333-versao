@@ -3,7 +3,8 @@
 import { useEffect, useState } from "react"
 import { io, type Socket } from "socket.io-client"
 
-const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:3001"
+const BACKEND_URL =
+  process.env.NEXT_PUBLIC_BACKEND_URL || "https://incredible-exploration-production-5a86.up.railway.app"
 
 export function useSocket() {
   const [socket, setSocket] = useState<Socket | null>(null)
@@ -12,15 +13,16 @@ export function useSocket() {
   useEffect(() => {
     const socketInstance = io(BACKEND_URL, {
       transports: ["websocket", "polling"],
+      reconnection: true,
+      reconnectionAttempts: 5,
+      reconnectionDelay: 1000,
     })
 
     socketInstance.on("connect", () => {
-      console.log("[v0] Socket connected")
       setIsConnected(true)
     })
 
     socketInstance.on("disconnect", () => {
-      console.log("[v0] Socket disconnected")
       setIsConnected(false)
     })
 

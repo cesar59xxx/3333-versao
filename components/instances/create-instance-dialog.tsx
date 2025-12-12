@@ -1,8 +1,6 @@
 "use client"
 
-import type React from "react"
-
-import { useState } from "react"
+import { useState, type FormEvent } from "react"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -28,30 +26,43 @@ export function CreateInstanceDialog({ open, onOpenChange, projectId, onSuccess 
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault()
+
+    if (!name.trim()) {
+      setError("Nome é obrigatório")
+      return
+    }
+
     setIsLoading(true)
     setError(null)
 
     try {
       await apiRequest("/api/instances", {
         method: "POST",
-        body: JSON.stringify({ projectId, name }),
+        body: JSON.stringify({ projectId, name: name.trim() }),
       })
-
       setName("")
       onSuccess()
       onOpenChange(false)
-    } catch (err: any) {
-      console.error("[v0] Error creating instance:", err)
-      setError(err.message)
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Erro ao criar instância"
+      setError(message)
     } finally {
       setIsLoading(false)
     }
   }
 
+  const handleClose = (isOpen: boolean) => {
+    if (!isOpen) {
+      setName("")
+      setError(null)
+    }
+    onOpenChange(isOpen)
+  }
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={handleClose}>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Nova instância WhatsApp</DialogTitle>
@@ -60,22 +71,23 @@ export function CreateInstanceDialog({ open, onOpenChange, projectId, onSuccess 
         <form onSubmit={handleSubmit}>
           <div className="flex flex-col gap-4 py-4">
             <div className="flex flex-col gap-2">
-              <Label htmlFor="name">Nome da instância</Label>
+              <Label htmlFor="instance-name">Nome da instância</Label>
               <Input
-                id="name"
+                id="instance-name"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 placeholder="Ex: Atendimento Principal"
-                required
+                autoComplete="off"
+                disabled={isLoading}
               />
             </div>
             {error && <p className="text-sm text-destructive">{error}</p>}
           </div>
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+            <Button type="button" variant="outline" onClick={() => handleClose(false)} disabled={isLoading}>
               Cancelar
             </Button>
-            <Button type="submit" disabled={isLoading}>
+            <Button type="submit" disabled={isLoading || !name.trim()}>
               {isLoading ? "Criando..." : "Criar instância"}
             </Button>
           </DialogFooter>

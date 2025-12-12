@@ -1,4 +1,5 @@
 "use client"
+
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import type { WhatsAppInstance } from "@/lib/types/database"
 import { Loader2 } from "lucide-react"
@@ -17,14 +18,19 @@ export function QrCodeDialog({ instance, open, onOpenChange, qrCode }: QrCodeDia
         <DialogHeader>
           <DialogTitle>Escanear QR Code</DialogTitle>
           <DialogDescription>
-            Abra o WhatsApp no seu celular e escaneie o QR code para conectar a instância{" "}
-            {instance?.name || "desconhecida"}.
+            Abra o WhatsApp no seu celular e escaneie o QR code para conectar a instância {instance?.name ?? ""}.
           </DialogDescription>
         </DialogHeader>
         <div className="flex flex-col items-center justify-center py-8">
           {qrCode ? (
             <div className="rounded-lg border bg-white p-4">
-              <img src={qrCode || "/placeholder.svg"} alt="QR Code" width={256} height={256} className="rounded" />
+              <img
+                src={qrCode || "/placeholder.svg"}
+                alt="QR Code WhatsApp"
+                width={256}
+                height={256}
+                className="rounded"
+              />
             </div>
           ) : (
             <div className="flex flex-col items-center gap-4">
@@ -33,7 +39,7 @@ export function QrCodeDialog({ instance, open, onOpenChange, qrCode }: QrCodeDia
             </div>
           )}
         </div>
-        <div className="text-center text-sm text-muted-foreground">
+        <div className="space-y-1 text-center text-sm text-muted-foreground">
           <p>1. Abra o WhatsApp no seu celular</p>
           <p>2. Toque em Menu ou Configurações e selecione Aparelhos conectados</p>
           <p>3. Toque em Conectar um aparelho</p>

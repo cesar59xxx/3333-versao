@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useState, useCallback } from "react"
 import { createClient } from "@/lib/supabase/client"
 import type { Project } from "@/lib/types/database"
 
@@ -9,26 +9,29 @@ export function useProjects() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  useEffect(() => {
-    async function fetchProjects() {
-      try {
-        setLoading(true)
-        const supabase = createClient()
+  const fetchProjects = useCallback(async () => {
+    try {
+      setLoading(true)
+      setError(null)
+      const supabase = createClient()
+      const { data, error: fetchError } = await supabase
+        .from("projects")
+        .select("*")
+        .order("created_at", { ascending: false })
 
-        const { data, error } = await supabase.from("projects").select("*").order("created_at", { ascending: false })
-
-        if (error) throw error
-        setProjects(data || [])
-      } catch (err: any) {
-        console.error("[v0] Error fetching projects:", err)
-        setError(err.message)
-      } finally {
-        setLoading(false)
-      }
+      if (fetchError) throw fetchError
+      setProjects(data ?? [])
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to fetch projects"
+      setError(message)
+    } finally {
+      setLoading(false)
     }
-
-    fetchProjects()
   }, [])
 
-  return { projects, loading, error }
+  useEffect(() => {
+    fetchProjects()
+  }, [fetchProjects])
+
+  return { projects, loading, error, refetch: fetchProjects }
 }

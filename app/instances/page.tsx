@@ -4,7 +4,6 @@ import { InstancesContent } from "./instances-content"
 
 export default async function InstancesPage() {
   const supabase = await createClient()
-
   const {
     data: { user },
     error,

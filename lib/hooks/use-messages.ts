@@ -1,39 +1,42 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useState, useCallback } from "react"
 import { apiRequest } from "@/lib/api/client"
 import type { Message } from "@/lib/types/database"
 
 export function useMessages(instanceId: string | null, contactId: string | null) {
   const [messages, setMessages] = useState<Message[]>([])
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const fetchMessages = async () => {
+  const fetchMessages = useCallback(async () => {
     if (!instanceId || !contactId) {
+      setMessages([])
       setLoading(false)
       return
     }
 
     try {
       setLoading(true)
-      const data = await apiRequest(`/api/instances/${instanceId}/chats/${contactId}/messages`)
-      setMessages(data)
-    } catch (err: any) {
-      console.error("[v0] Error fetching messages:", err)
-      setError(err.message)
+      setError(null)
+      const data = await apiRequest<Message[]>(`/api/instances/${instanceId}/chats/${contactId}/messages`)
+      setMessages(data ?? [])
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to fetch messages"
+      setError(message)
+      setMessages([])
     } finally {
       setLoading(false)
     }
-  }
+  }, [instanceId, contactId])
 
   useEffect(() => {
     fetchMessages()
-  }, [instanceId, contactId])
+  }, [fetchMessages])
 
-  const addMessage = (message: Message) => {
+  const addMessage = useCallback((message: Message) => {
     setMessages((prev) => [...prev, message])
-  }
+  }, [])
 
   return { messages, loading, error, refetch: fetchMessages, addMessage }
 }

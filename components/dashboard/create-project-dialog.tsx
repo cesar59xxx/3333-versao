@@ -1,8 +1,6 @@
 "use client"
 
-import type React from "react"
-
-import { useState } from "react"
+import { useState, type FormEvent } from "react"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -27,8 +25,14 @@ export function CreateProjectDialog({ open, onOpenChange, onSuccess }: CreatePro
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault()
+
+    if (!name.trim()) {
+      setError("Nome é obrigatório")
+      return
+    }
+
     setIsLoading(true)
     setError(null)
 
@@ -40,25 +44,33 @@ export function CreateProjectDialog({ open, onOpenChange, onSuccess }: CreatePro
 
       if (!user) throw new Error("Usuário não autenticado")
 
-      const { error } = await supabase.from("projects").insert({
-        name,
+      const { error: insertError } = await supabase.from("projects").insert({
+        name: name.trim(),
         owner_id: user.id,
       })
 
-      if (error) throw error
+      if (insertError) throw insertError
 
       setName("")
       onSuccess()
-    } catch (err: any) {
-      console.error("[v0] Error creating project:", err)
-      setError(err.message)
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Erro ao criar projeto"
+      setError(message)
     } finally {
       setIsLoading(false)
     }
   }
 
+  const handleClose = (isOpen: boolean) => {
+    if (!isOpen) {
+      setName("")
+      setError(null)
+    }
+    onOpenChange(isOpen)
+  }
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={handleClose}>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Criar novo projeto</DialogTitle>
@@ -67,22 +79,23 @@ export function CreateProjectDialog({ open, onOpenChange, onSuccess }: CreatePro
         <form onSubmit={handleSubmit}>
           <div className="flex flex-col gap-4 py-4">
             <div className="flex flex-col gap-2">
-              <Label htmlFor="name">Nome do projeto</Label>
+              <Label htmlFor="project-name">Nome do projeto</Label>
               <Input
-                id="name"
+                id="project-name"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 placeholder="Meu Projeto"
-                required
+                autoComplete="off"
+                disabled={isLoading}
               />
             </div>
             {error && <p className="text-sm text-destructive">{error}</p>}
           </div>
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+            <Button type="button" variant="outline" onClick={() => handleClose(false)} disabled={isLoading}>
               Cancelar
             </Button>
-            <Button type="submit" disabled={isLoading}>
+            <Button type="submit" disabled={isLoading || !name.trim()}>
               {isLoading ? "Criando..." : "Criar projeto"}
             </Button>
           </DialogFooter>

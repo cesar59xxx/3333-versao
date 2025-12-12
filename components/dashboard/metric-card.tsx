@@ -6,10 +6,6 @@ interface MetricCardProps {
   value: string | number
   icon: LucideIcon
   description?: string
-  trend?: {
-    value: number
-    isPositive: boolean
-  }
 }
 
 export function MetricCard({ title, value, icon: Icon, description }: MetricCardProps) {
