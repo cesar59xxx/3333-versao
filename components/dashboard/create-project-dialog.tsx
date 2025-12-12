@@ -28,7 +28,8 @@ export function CreateProjectDialog({ open, onOpenChange, onSuccess }: CreatePro
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault()
 
-    if (!name.trim()) {
+    const trimmedName = name.trim()
+    if (!trimmedName) {
       setError("Nome é obrigatório")
       return
     }
@@ -45,7 +46,7 @@ export function CreateProjectDialog({ open, onOpenChange, onSuccess }: CreatePro
       if (!user) throw new Error("Usuário não autenticado")
 
       const { error: insertError } = await supabase.from("projects").insert({
-        name: name.trim(),
+        name: trimmedName,
         owner_id: user.id,
       })
 
@@ -54,8 +55,7 @@ export function CreateProjectDialog({ open, onOpenChange, onSuccess }: CreatePro
       setName("")
       onSuccess()
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Erro ao criar projeto"
-      setError(message)
+      setError(err instanceof Error ? err.message : "Erro ao criar projeto")
     } finally {
       setIsLoading(false)
     }

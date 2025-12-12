@@ -1,13 +1,13 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import Link from "next/link"
 import { MessageCircle, Users, TrendingUp, DollarSign } from "lucide-react"
+import { Button } from "@/components/ui/button"
 import { MetricCard } from "@/components/dashboard/metric-card"
 import { ProjectSelector } from "@/components/dashboard/project-selector"
 import { useProjects } from "@/lib/hooks/use-projects"
 import { useDashboardMetrics } from "@/lib/hooks/use-dashboard-metrics"
-import { Button } from "@/components/ui/button"
-import Link from "next/link"
 
 export function DashboardContent() {
   const { projects, loading: projectsLoading, refetch: refetchProjects } = useProjects()
@@ -21,10 +21,7 @@ export function DashboardContent() {
   }, [projects, selectedProjectId])
 
   const formatCurrency = (value: number) => {
-    return new Intl.NumberFormat("pt-BR", {
-      style: "currency",
-      currency: "BRL",
-    }).format(value)
+    return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value)
   }
 
   const formatPercentage = (value: number) => {
@@ -66,13 +63,17 @@ export function DashboardContent() {
             </div>
           </div>
 
-          {metricsLoading ? (
+          {!selectedProjectId ? (
+            <div className="rounded-lg border border-dashed p-8 text-center">
+              <p className="text-muted-foreground">Selecione um projeto para ver as métricas</p>
+            </div>
+          ) : metricsLoading ? (
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-              {Array.from({ length: 4 }).map((_, i) => (
+              {[1, 2, 3, 4].map((i) => (
                 <div key={i} className="h-32 rounded-lg border bg-card animate-pulse" />
               ))}
             </div>
-          ) : metrics ? (
+          ) : (
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
               <MetricCard
                 title="Taxa de Resposta"
@@ -98,10 +99,6 @@ export function DashboardContent() {
                 icon={DollarSign}
                 description="Total de vendas hoje"
               />
-            </div>
-          ) : (
-            <div className="rounded-lg border border-dashed p-8 text-center">
-              <p className="text-muted-foreground">Selecione um projeto para ver as métricas</p>
             </div>
           )}
 

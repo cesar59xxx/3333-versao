@@ -1,10 +1,10 @@
-import { createClient as createSupabaseClient } from "@/lib/supabase/client"
+import { createClient } from "@/lib/supabase/client"
 
 const BACKEND_URL =
   process.env.NEXT_PUBLIC_BACKEND_URL || "https://incredible-exploration-production-5a86.up.railway.app"
 
 async function getAuthToken(): Promise<string | null> {
-  const supabase = createSupabaseClient()
+  const supabase = createClient()
   const {
     data: { session },
   } = await supabase.auth.getSession()

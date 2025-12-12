@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
+import Link from "next/link"
 import { Plus } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { ProjectSelector } from "@/components/dashboard/project-selector"
@@ -11,37 +12,22 @@ import { useProjects } from "@/lib/hooks/use-projects"
 import { useInstances } from "@/lib/hooks/use-instances"
 import { useSocket } from "@/lib/hooks/use-socket"
 import type { WhatsAppInstance } from "@/lib/types/database"
-import Link from "next/link"
-
-function isValidInstance(instance: unknown): instance is WhatsAppInstance {
-  if (!instance || typeof instance !== "object") return false
-  const obj = instance as Record<string, unknown>
-  return typeof obj.id === "string" && typeof obj.name === "string"
-}
 
 export function InstancesContent() {
   const { projects, loading: projectsLoading, refetch: refetchProjects } = useProjects()
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null)
-  const {
-    instances: rawInstances,
-    loading: instancesLoading,
-    refetch: refetchInstances,
-  } = useInstances(selectedProjectId)
+  const { instances, loading: instancesLoading, refetch: refetchInstances } = useInstances(selectedProjectId)
   const [showCreateDialog, setShowCreateDialog] = useState(false)
   const [qrDialogInstance, setQrDialogInstance] = useState<WhatsAppInstance | null>(null)
   const [currentQrCode, setCurrentQrCode] = useState<string | null>(null)
   const { socket } = useSocket()
 
-  const instances = rawInstances.filter(isValidInstance)
-
-  // Auto-select first project
   useEffect(() => {
     if (projects.length > 0 && !selectedProjectId) {
       setSelectedProjectId(projects[0].id)
     }
   }, [projects, selectedProjectId])
 
-  // Socket event handlers
   useEffect(() => {
     if (!socket) return
 
@@ -53,7 +39,7 @@ export function InstancesContent() {
 
     const handleStatus = (data: { instanceId: string; status: string }) => {
       refetchInstances()
-      if (data.status.toLowerCase() === "connected" && qrDialogInstance?.id === data.instanceId) {
+      if (data.status === "connected" && qrDialogInstance?.id === data.instanceId) {
         setQrDialogInstance(null)
         setCurrentQrCode(null)
       }
@@ -81,14 +67,6 @@ export function InstancesContent() {
       setCurrentQrCode(null)
     }
   }, [])
-
-  const handleCreateSuccess = useCallback(() => {
-    refetchInstances()
-  }, [refetchInstances])
-
-  const handleProjectCreated = useCallback(() => {
-    refetchProjects()
-  }, [refetchProjects])
 
   return (
     <div className="flex min-h-screen flex-col">
@@ -120,7 +98,7 @@ export function InstancesContent() {
                     projects={projects}
                     selectedProjectId={selectedProjectId}
                     onSelectProject={setSelectedProjectId}
-                    onProjectCreated={handleProjectCreated}
+                    onProjectCreated={refetchProjects}
                   />
                 )}
               </div>
@@ -133,7 +111,7 @@ export function InstancesContent() {
 
           {instancesLoading ? (
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-              {Array.from({ length: 3 }).map((_, i) => (
+              {[1, 2, 3].map((i) => (
                 <div key={i} className="h-48 rounded-lg border bg-card animate-pulse" />
               ))}
             </div>
@@ -166,7 +144,7 @@ export function InstancesContent() {
           open={showCreateDialog}
           onOpenChange={setShowCreateDialog}
           projectId={selectedProjectId}
-          onSuccess={handleCreateSuccess}
+          onSuccess={refetchInstances}
         />
       )}
 

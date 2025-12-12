@@ -18,7 +18,8 @@ export function QrCodeDialog({ instance, open, onOpenChange, qrCode }: QrCodeDia
         <DialogHeader>
           <DialogTitle>Escanear QR Code</DialogTitle>
           <DialogDescription>
-            Abra o WhatsApp no seu celular e escaneie o QR code para conectar a instância {instance?.name ?? ""}.
+            Abra o WhatsApp no seu celular e escaneie o QR code para conectar a instância{" "}
+            <strong>{instance?.name}</strong>.
           </DialogDescription>
         </DialogHeader>
         <div className="flex flex-col items-center justify-center py-8">

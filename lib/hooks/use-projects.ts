@@ -20,10 +20,10 @@ export function useProjects() {
         .order("created_at", { ascending: false })
 
       if (fetchError) throw fetchError
-      setProjects(data ?? [])
+      setProjects(Array.isArray(data) ? data : [])
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Failed to fetch projects"
-      setError(message)
+      setError(err instanceof Error ? err.message : "Erro ao buscar projetos")
+      setProjects([])
     } finally {
       setLoading(false)
     }

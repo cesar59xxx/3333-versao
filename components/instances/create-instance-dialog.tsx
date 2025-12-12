@@ -29,7 +29,8 @@ export function CreateInstanceDialog({ open, onOpenChange, projectId, onSuccess 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault()
 
-    if (!name.trim()) {
+    const trimmedName = name.trim()
+    if (!trimmedName) {
       setError("Nome é obrigatório")
       return
     }
@@ -40,14 +41,13 @@ export function CreateInstanceDialog({ open, onOpenChange, projectId, onSuccess 
     try {
       await apiRequest("/api/instances", {
         method: "POST",
-        body: JSON.stringify({ projectId, name: name.trim() }),
+        body: JSON.stringify({ projectId, name: trimmedName }),
       })
       setName("")
       onSuccess()
       onOpenChange(false)
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Erro ao criar instância"
-      setError(message)
+      setError(err instanceof Error ? err.message : "Erro ao criar instância")
     } finally {
       setIsLoading(false)
     }
