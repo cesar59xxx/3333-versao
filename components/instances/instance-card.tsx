@@ -14,40 +14,82 @@ interface InstanceCardProps {
   onQrCodeClick: (instance: WhatsAppInstance) => void
 }
 
-const statusConfig = {
+const statusConfig: Record<
+  string,
+  {
+    label: string
+    icon: typeof Clock
+    variant: "secondary" | "default" | "destructive"
+    className?: string
+  }
+> = {
   CREATED: {
     label: "Criado",
     icon: Clock,
-    variant: "secondary" as const,
+    variant: "secondary",
+  },
+  created: {
+    label: "Criado",
+    icon: Clock,
+    variant: "secondary",
   },
   QR_PENDING: {
     label: "Aguardando QR",
     icon: QrCode,
-    variant: "default" as const,
+    variant: "default",
+  },
+  qr_pending: {
+    label: "Aguardando QR",
+    icon: QrCode,
+    variant: "default",
   },
   CONNECTED: {
     label: "Conectado",
     icon: CheckCircle,
-    variant: "default" as const,
+    variant: "default",
+    className: "bg-primary text-primary-foreground",
+  },
+  connected: {
+    label: "Conectado",
+    icon: CheckCircle,
+    variant: "default",
     className: "bg-primary text-primary-foreground",
   },
   DISCONNECTED: {
     label: "Desconectado",
     icon: AlertCircle,
-    variant: "secondary" as const,
+    variant: "secondary",
+  },
+  disconnected: {
+    label: "Desconectado",
+    icon: AlertCircle,
+    variant: "secondary",
   },
   ERROR: {
     label: "Erro",
     icon: AlertCircle,
-    variant: "destructive" as const,
+    variant: "destructive",
   },
+  error: {
+    label: "Erro",
+    icon: AlertCircle,
+    variant: "destructive",
+  },
+}
+
+const defaultConfig = {
+  label: "Desconhecido",
+  icon: AlertCircle,
+  variant: "secondary" as const,
 }
 
 export function InstanceCard({ instance, onStartInstance, onQrCodeClick }: InstanceCardProps) {
   const [isLoading, setIsLoading] = useState(false)
   const [isLoggingOut, setIsLoggingOut] = useState(false)
-  const config = statusConfig[instance.status]
+  const config = statusConfig[instance.status] || defaultConfig
   const Icon = config.icon
+
+  const normalizedStatus = instance.status?.toUpperCase() || "DISCONNECTED"
 
   const handleStart = async () => {
     setIsLoading(true)
@@ -107,20 +149,22 @@ export function InstanceCard({ instance, onStartInstance, onQrCodeClick }: Insta
           )}
 
           <div className="flex gap-2">
-            {(instance.status === "CREATED" || instance.status === "DISCONNECTED" || instance.status === "ERROR") && (
+            {(normalizedStatus === "CREATED" ||
+              normalizedStatus === "DISCONNECTED" ||
+              normalizedStatus === "ERROR") && (
               <Button onClick={handleStart} disabled={isLoading} className="flex-1">
                 {isLoading ? "Iniciando..." : "Iniciar"}
               </Button>
             )}
 
-            {instance.status === "QR_PENDING" && (
+            {normalizedStatus === "QR_PENDING" && (
               <Button onClick={() => onQrCodeClick(instance)} className="flex-1">
                 <QrCode className="mr-2 h-4 w-4" />
                 Ver QR Code
               </Button>
             )}
 
-            {instance.status === "CONNECTED" && (
+            {normalizedStatus === "CONNECTED" && (
               <>
                 <Button variant="outline" asChild className="flex-1 bg-transparent">
                   <a href={`/instances/${instance.id}/chat`}>Abrir chat</a>
