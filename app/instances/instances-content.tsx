@@ -13,14 +13,26 @@ import { useSocket } from "@/lib/hooks/use-socket"
 import type { WhatsAppInstance } from "@/lib/types/database"
 import Link from "next/link"
 
+function isValidInstance(instance: unknown): instance is WhatsAppInstance {
+  if (!instance || typeof instance !== "object") return false
+  const obj = instance as Record<string, unknown>
+  return typeof obj.id === "string" && typeof obj.name === "string"
+}
+
 export function InstancesContent() {
   const { projects, loading: projectsLoading, refetch: refetchProjects } = useProjects()
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null)
-  const { instances, loading: instancesLoading, refetch: refetchInstances } = useInstances(selectedProjectId)
+  const {
+    instances: rawInstances,
+    loading: instancesLoading,
+    refetch: refetchInstances,
+  } = useInstances(selectedProjectId)
   const [showCreateDialog, setShowCreateDialog] = useState(false)
   const [qrDialogInstance, setQrDialogInstance] = useState<WhatsAppInstance | null>(null)
   const [currentQrCode, setCurrentQrCode] = useState<string | null>(null)
   const { socket } = useSocket()
+
+  const instances = rawInstances.filter(isValidInstance)
 
   // Auto-select first project
   useEffect(() => {
