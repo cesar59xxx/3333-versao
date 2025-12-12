@@ -5,7 +5,7 @@ import { supabase } from "../config/supabase.js"
 export function createInstancesRouter(clientManager, io) {
   const router = express.Router()
 
-  // Get all instances for user
+  // Get all instances for user (through their projects)
   router.get("/", authMiddleware, async (req, res) => {
     try {
       const userId = req.user?.id
@@ -13,15 +13,28 @@ export function createInstancesRouter(clientManager, io) {
         return res.status(401).json({ error: "User not authenticated" })
       }
 
+      const { data: projects, error: projectsError } = await supabase
+        .from("projects")
+        .select("id")
+        .eq("owner_id", userId)
+
+      if (projectsError) throw projectsError
+
+      if (!projects || projects.length === 0) {
+        return res.json([])
+      }
+
+      const projectIds = projects.map((p) => p.id)
+
       const { data: instances, error } = await supabase
         .from("whatsapp_instances")
         .select("*")
-        .eq("user_id", userId)
+        .in("project_id", projectIds)
         .order("created_at", { ascending: false })
 
       if (error) throw error
 
-      const instancesWithStatus = instances.map((instance) => ({
+      const instancesWithStatus = (instances || []).map((instance) => ({
         ...instance,
         is_connected: clientManager.isConnected(instance.id),
       }))
@@ -43,11 +56,51 @@ export function createInstancesRouter(clientManager, io) {
 
       const { name, project_id } = req.body
 
+      let targetProjectId = project_id
+
+      if (!targetProjectId) {
+        // Get or create a default project for the user
+        const { data: existingProject } = await supabase
+          .from("projects")
+          .select("id")
+          .eq("owner_id", userId)
+          .limit(1)
+          .single()
+
+        if (existingProject) {
+          targetProjectId = existingProject.id
+        } else {
+          // Create a default project
+          const { data: newProject, error: createError } = await supabase
+            .from("projects")
+            .insert({
+              owner_id: userId,
+              name: "Default Project",
+            })
+            .select()
+            .single()
+
+          if (createError) throw createError
+          targetProjectId = newProject.id
+        }
+      } else {
+        // Verify user owns this project
+        const { data: project, error: projectError } = await supabase
+          .from("projects")
+          .select("id")
+          .eq("id", targetProjectId)
+          .eq("owner_id", userId)
+          .single()
+
+        if (projectError || !project) {
+          return res.status(403).json({ error: "Project not found or access denied" })
+        }
+      }
+
       const { data: instance, error } = await supabase
         .from("whatsapp_instances")
         .insert({
-          user_id: userId,
-          project_id,
+          project_id: targetProjectId,
           name,
           status: "disconnected",
         })
@@ -75,13 +128,16 @@ export function createInstancesRouter(clientManager, io) {
 
       const { data: instance, error } = await supabase
         .from("whatsapp_instances")
-        .select("*")
+        .select("*, projects!inner(owner_id)")
         .eq("id", instanceId)
-        .eq("user_id", userId)
         .single()
 
       if (error || !instance) {
         return res.status(404).json({ error: "Instance not found" })
+      }
+
+      if (instance.projects.owner_id !== userId) {
+        return res.status(403).json({ error: "Access denied" })
       }
 
       const qrCode = await clientManager.initializeClient(instanceId, io)
@@ -105,13 +161,16 @@ export function createInstancesRouter(clientManager, io) {
 
       const { data: instance, error } = await supabase
         .from("whatsapp_instances")
-        .select("*")
+        .select("*, projects!inner(owner_id)")
         .eq("id", instanceId)
-        .eq("user_id", userId)
         .single()
 
       if (error || !instance) {
         return res.status(404).json({ error: "Instance not found" })
+      }
+
+      if (instance.projects.owner_id !== userId) {
+        return res.status(403).json({ error: "Access denied" })
       }
 
       await clientManager.stopClient(instanceId)
@@ -137,19 +196,25 @@ export function createInstancesRouter(clientManager, io) {
 
       const { data: instance, error } = await supabase
         .from("whatsapp_instances")
-        .select("*")
+        .select("*, projects!inner(owner_id)")
         .eq("id", instanceId)
-        .eq("user_id", userId)
         .single()
 
       if (error || !instance) {
         return res.status(404).json({ error: "Instance not found" })
       }
 
+      if (instance.projects.owner_id !== userId) {
+        return res.status(403).json({ error: "Access denied" })
+      }
+
       const isConnected = clientManager.isConnected(instanceId)
 
+      // Remove the projects relation from response
+      const { projects, ...instanceData } = instance
+
       res.json({
-        ...instance,
+        ...instanceData,
         is_connected: isConnected,
       })
     } catch (error) {
@@ -168,9 +233,23 @@ export function createInstancesRouter(clientManager, io) {
 
       const instanceId = req.params.id
 
+      const { data: instance, error: fetchError } = await supabase
+        .from("whatsapp_instances")
+        .select("*, projects!inner(owner_id)")
+        .eq("id", instanceId)
+        .single()
+
+      if (fetchError || !instance) {
+        return res.status(404).json({ error: "Instance not found" })
+      }
+
+      if (instance.projects.owner_id !== userId) {
+        return res.status(403).json({ error: "Access denied" })
+      }
+
       await clientManager.stopClient(instanceId)
 
-      const { error } = await supabase.from("whatsapp_instances").delete().eq("id", instanceId).eq("user_id", userId)
+      const { error } = await supabase.from("whatsapp_instances").delete().eq("id", instanceId)
 
       if (error) throw error
 
