@@ -1,152 +1,51 @@
 "use client"
 
-import type React from "react"
-
-import { useState } from "react"
-import Link from "next/link"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Phone, QrCode, AlertCircle, CheckCircle, Clock, LogOut, Wifi, WifiOff } from "lucide-react"
-import type { WhatsAppInstance, InstanceStatus } from "@/lib/types/database"
-import { apiRequest } from "@/lib/api/client"
-
-interface StatusConfig {
-  label: string
-  icon: React.ComponentType<{ className?: string }>
-  variant: "default" | "secondary" | "destructive" | "outline"
-  className: string
-}
-
-function getStatusConfig(status: InstanceStatus): StatusConfig {
-  const configs: Record<InstanceStatus, StatusConfig> = {
-    created: {
-      label: "Criado",
-      icon: Clock,
-      variant: "secondary",
-      className: "",
-    },
-    qr_pending: {
-      label: "Aguardando QR",
-      icon: QrCode,
-      variant: "default",
-      className: "bg-yellow-500 hover:bg-yellow-600",
-    },
-    connected: {
-      label: "Conectado",
-      icon: CheckCircle,
-      variant: "default",
-      className: "bg-green-600 hover:bg-green-700",
-    },
-    disconnected: {
-      label: "Desconectado",
-      icon: WifiOff,
-      variant: "secondary",
-      className: "",
-    },
-    error: {
-      label: "Erro",
-      icon: AlertCircle,
-      variant: "destructive",
-      className: "",
-    },
-  }
-  return configs[status] || configs.disconnected
-}
+import type { Instance } from "@/lib/types"
+import { QrCode, MessageSquare, Trash2 } from "lucide-react"
+import Link from "next/link"
 
 interface InstanceCardProps {
-  instance: WhatsAppInstance
-  onRefresh: () => void
-  onQrCodeClick: (instance: WhatsAppInstance) => void
+  instance: Instance
+  onShowQR: () => void
+  onDelete: () => void
 }
 
-export function InstanceCard({ instance, onRefresh, onQrCodeClick }: InstanceCardProps) {
-  const [isStarting, setIsStarting] = useState(false)
-  const [isLoggingOut, setIsLoggingOut] = useState(false)
+const statusConfig = {
+  connected: { label: "Conectado", variant: "default" as const, color: "bg-green-500" },
+  connecting: { label: "Conectando...", variant: "secondary" as const, color: "bg-yellow-500" },
+  disconnected: { label: "Desconectado", variant: "outline" as const, color: "bg-red-500" },
+}
 
-  const status = instance.status
-  const config = getStatusConfig(status)
-  const StatusIcon = config.icon
-
-  const handleStart = async () => {
-    setIsStarting(true)
-    try {
-      await apiRequest(`/api/instances/${instance.id}/start`, { method: "POST" })
-      onRefresh()
-    } catch (err) {
-      console.error("Erro ao iniciar:", err)
-    } finally {
-      setIsStarting(false)
-    }
-  }
-
-  const handleLogout = async () => {
-    setIsLoggingOut(true)
-    try {
-      await apiRequest(`/api/instances/${instance.id}/logout`, { method: "POST" })
-      onRefresh()
-    } catch (err) {
-      console.error("Erro ao desconectar:", err)
-    } finally {
-      setIsLoggingOut(false)
-    }
-  }
+export function InstanceCard({ instance, onShowQR, onDelete }: InstanceCardProps) {
+  const status = statusConfig[instance.status] || statusConfig.disconnected
 
   return (
     <Card>
-      <CardHeader className="pb-3">
-        <div className="flex items-start justify-between gap-2">
-          <div className="flex items-center gap-2 min-w-0">
-            <Phone className="h-5 w-5 shrink-0 text-muted-foreground" />
-            <CardTitle className="text-lg truncate">{instance.name}</CardTitle>
-          </div>
-          <Badge variant={config.variant} className={config.className}>
-            <StatusIcon className="mr-1 h-3 w-3" />
-            {config.label}
-          </Badge>
+      <CardHeader className="flex flex-row items-start justify-between space-y-0">
+        <div className="space-y-1">
+          <CardTitle>{instance.name}</CardTitle>
+          <p className="text-sm text-muted-foreground">{instance.phone_number || "Sem número"}</p>
         </div>
+        <Badge variant={status.variant}>{status.label}</Badge>
       </CardHeader>
       <CardContent>
-        <div className="flex flex-col gap-4">
-          {instance.phone_number && (
-            <p className="text-sm">
-              <span className="text-muted-foreground">Número: </span>
-              <span className="font-medium">{instance.phone_number}</span>
-            </p>
-          )}
-
-          {instance.last_connected_at && (
-            <p className="text-sm text-muted-foreground">
-              Última conexão: {new Date(instance.last_connected_at).toLocaleString("pt-BR")}
-            </p>
-          )}
-
-          <div className="flex gap-2">
-            {(status === "created" || status === "disconnected" || status === "error") && (
-              <Button onClick={handleStart} disabled={isStarting} className="flex-1">
-                <Wifi className="mr-2 h-4 w-4" />
-                {isStarting ? "Iniciando..." : "Iniciar"}
-              </Button>
-            )}
-
-            {status === "qr_pending" && (
-              <Button onClick={() => onQrCodeClick(instance)} className="flex-1">
-                <QrCode className="mr-2 h-4 w-4" />
-                Ver QR Code
-              </Button>
-            )}
-
-            {status === "connected" && (
-              <>
-                <Button variant="outline" asChild className="flex-1 bg-transparent">
-                  <Link href={`/instances/${instance.id}/chat`}>Abrir chat</Link>
-                </Button>
-                <Button variant="ghost" size="icon" onClick={handleLogout} disabled={isLoggingOut} title="Desconectar">
-                  <LogOut className="h-4 w-4" />
-                </Button>
-              </>
-            )}
-          </div>
+        <div className="flex gap-2">
+          <Button size="sm" variant="outline" onClick={onShowQR} disabled={instance.status === "connected"}>
+            <QrCode className="w-4 h-4 mr-1" />
+            QR Code
+          </Button>
+          <Link href={`/instances/${instance.id}/chat`}>
+            <Button size="sm" disabled={instance.status !== "connected"}>
+              <MessageSquare className="w-4 h-4 mr-1" />
+              Chat
+            </Button>
+          </Link>
+          <Button size="sm" variant="destructive" onClick={onDelete}>
+            <Trash2 className="w-4 h-4" />
+          </Button>
         </div>
       </CardContent>
     </Card>

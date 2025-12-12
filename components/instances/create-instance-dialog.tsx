@@ -1,97 +1,70 @@
 "use client"
 
-import { useState, type FormEvent } from "react"
+import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
+  DialogTrigger,
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { apiRequest } from "@/lib/api/client"
+import { Plus } from "lucide-react"
 
 interface CreateInstanceDialogProps {
-  open: boolean
-  onOpenChange: (open: boolean) => void
-  projectId: string
-  onSuccess: () => void
+  onCreateInstance: (name: string) => Promise<void>
+  isLoading?: boolean
 }
 
-export function CreateInstanceDialog({ open, onOpenChange, projectId, onSuccess }: CreateInstanceDialogProps) {
+export function CreateInstanceDialog({ onCreateInstance, isLoading }: CreateInstanceDialogProps) {
+  const [open, setOpen] = useState(false)
   const [name, setName] = useState("")
-  const [isLoading, setIsLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [isSubmitting, setIsSubmitting] = useState(false)
 
-  const handleSubmit = async (e: FormEvent) => {
-    e.preventDefault()
+  async function handleCreate() {
+    if (!name.trim()) return
 
-    const trimmedName = name.trim()
-    if (!trimmedName) {
-      setError("Nome é obrigatório")
-      return
-    }
-
-    setIsLoading(true)
-    setError(null)
-
+    setIsSubmitting(true)
     try {
-      await apiRequest("/api/instances", {
-        method: "POST",
-        body: JSON.stringify({ projectId, name: trimmedName }),
-      })
+      await onCreateInstance(name)
       setName("")
-      onSuccess()
-      onOpenChange(false)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Erro ao criar instância")
+      setOpen(false)
     } finally {
-      setIsLoading(false)
+      setIsSubmitting(false)
     }
-  }
-
-  const handleClose = (isOpen: boolean) => {
-    if (!isOpen) {
-      setName("")
-      setError(null)
-    }
-    onOpenChange(isOpen)
   }
 
   return (
-    <Dialog open={open} onOpenChange={handleClose}>
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button>
+          <Plus className="w-4 h-4 mr-2" />
+          Nova Instância
+        </Button>
+      </DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Nova instância WhatsApp</DialogTitle>
-          <DialogDescription>Crie uma nova instância para conectar um número do WhatsApp.</DialogDescription>
+          <DialogTitle>Criar Nova Instância</DialogTitle>
+          <DialogDescription>Digite um nome para a nova instância do WhatsApp</DialogDescription>
         </DialogHeader>
-        <form onSubmit={handleSubmit}>
-          <div className="flex flex-col gap-4 py-4">
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="instance-name">Nome da instância</Label>
-              <Input
-                id="instance-name"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="Ex: Atendimento Principal"
-                autoComplete="off"
-                disabled={isLoading}
-              />
-            </div>
-            {error && <p className="text-sm text-destructive">{error}</p>}
-          </div>
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => handleClose(false)} disabled={isLoading}>
+        <div className="space-y-4">
+          <Input
+            placeholder="Nome da instância"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && handleCreate()}
+          />
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setOpen(false)}>
               Cancelar
             </Button>
-            <Button type="submit" disabled={isLoading || !name.trim()}>
-              {isLoading ? "Criando..." : "Criar instância"}
+            <Button onClick={handleCreate} disabled={isSubmitting || !name.trim()}>
+              {isSubmitting ? "Criando..." : "Criar"}
             </Button>
-          </DialogFooter>
-        </form>
+          </div>
+        </div>
       </DialogContent>
     </Dialog>
   )

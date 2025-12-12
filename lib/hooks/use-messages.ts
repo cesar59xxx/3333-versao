@@ -1,42 +1,74 @@
 "use client"
 
 import { useEffect, useState, useCallback } from "react"
-import { apiRequest } from "@/lib/api/client"
-import type { Message } from "@/lib/types/database"
+import { createBrowserClient } from "@supabase/ssr"
+import type { Message } from "@/lib/types"
 
 export function useMessages(instanceId: string | null, contactId: string | null) {
   const [messages, setMessages] = useState<Message[]>([])
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [loading, setLoading] = useState(true)
 
-  const fetchMessages = useCallback(async () => {
+  useEffect(() => {
     if (!instanceId || !contactId) {
       setMessages([])
       setLoading(false)
       return
     }
 
-    try {
-      setLoading(true)
-      setError(null)
-      const data = await apiRequest<Message[]>(`/api/instances/${instanceId}/chats/${contactId}/messages`)
-      setMessages(data ?? [])
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "Failed to fetch messages"
-      setError(message)
-      setMessages([])
-    } finally {
-      setLoading(false)
+    async function fetchMessages() {
+      try {
+        const supabase = createBrowserClient(
+          process.env.NEXT_PUBLIC_SUPABASE_URL!,
+          process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+        )
+
+        const { data, error } = await supabase
+          .from("messages")
+          .select("*")
+          .eq("instance_id", instanceId)
+          .eq("contact_id", contactId)
+          .order("created_at", { ascending: true })
+
+        if (error) throw error
+        setMessages(data || [])
+      } finally {
+        setLoading(false)
+      }
     }
+
+    setLoading(true)
+    fetchMessages()
   }, [instanceId, contactId])
 
-  useEffect(() => {
-    fetchMessages()
-  }, [fetchMessages])
+  const sendMessage = useCallback(
+    async (content: string) => {
+      if (!instanceId || !contactId) return false
 
-  const addMessage = useCallback((message: Message) => {
-    setMessages((prev) => [...prev, message])
-  }, [])
+      try {
+        const supabase = createBrowserClient(
+          process.env.NEXT_PUBLIC_SUPABASE_URL!,
+          process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+        )
 
-  return { messages, loading, error, refetch: fetchMessages, addMessage }
+        const { error } = await supabase.from("messages").insert([
+          {
+            instance_id: instanceId,
+            contact_id: contactId,
+            content,
+            direction: "outbound",
+            is_from_agent: true,
+          },
+        ])
+
+        if (error) throw error
+        return true
+      } catch (err) {
+        console.error("Erro ao enviar mensagem:", err)
+        return false
+      }
+    },
+    [instanceId, contactId],
+  )
+
+  return { messages, loading, sendMessage }
 }

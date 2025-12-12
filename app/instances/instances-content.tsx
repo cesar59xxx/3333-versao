@@ -1,159 +1,97 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
-import Link from "next/link"
-import { Plus } from "lucide-react"
-import { Button } from "@/components/ui/button"
-import { ProjectSelector } from "@/components/dashboard/project-selector"
-import { CreateInstanceDialog } from "@/components/instances/create-instance-dialog"
-import { InstanceCard } from "@/components/instances/instance-card"
-import { QrCodeDialog } from "@/components/instances/qr-code-dialog"
-import { useProjects } from "@/lib/hooks/use-projects"
+import { useSearchParams, useRouter } from "next/navigation"
 import { useInstances } from "@/lib/hooks/use-instances"
-import { useSocket } from "@/lib/hooks/use-socket"
-import type { WhatsAppInstance } from "@/lib/types/database"
+import { InstanceCard } from "@/components/instances/instance-card"
+import { CreateInstanceDialog } from "@/components/instances/create-instance-dialog"
+import { QRCodeDialog } from "@/components/instances/qr-code-dialog"
+import { useState } from "react"
+import { createBrowserClient } from "@supabase/ssr"
 
 export function InstancesContent() {
-  const { projects, loading: projectsLoading, refetch: refetchProjects } = useProjects()
-  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null)
-  const { instances, loading: instancesLoading, refetch: refetchInstances } = useInstances(selectedProjectId)
-  const [showCreateDialog, setShowCreateDialog] = useState(false)
-  const [qrDialogInstance, setQrDialogInstance] = useState<WhatsAppInstance | null>(null)
-  const [currentQrCode, setCurrentQrCode] = useState<string | null>(null)
-  const { socket } = useSocket()
+  const searchParams = useSearchParams()
+  const router = useRouter()
+  const projectId = searchParams.get("project")
 
-  useEffect(() => {
-    if (projects.length > 0 && !selectedProjectId) {
-      setSelectedProjectId(projects[0].id)
+  const { instances, loading, createInstance } = useInstances(projectId)
+  const [selectedInstance, setSelectedInstance] = useState<(typeof instances)[0] | null>(null)
+  const [showQRDialog, setShowQRDialog] = useState(false)
+
+  async function handleCreateInstance(name: string) {
+    const result = await createInstance(name)
+    if (result) {
+      router.refresh()
     }
-  }, [projects, selectedProjectId])
+  }
 
-  useEffect(() => {
-    if (!socket) return
+  async function handleDeleteInstance(instanceId: string) {
+    if (!confirm("Tem certeza que deseja deletar esta instância?")) return
 
-    const handleQr = (data: { instanceId: string; qr: string }) => {
-      if (qrDialogInstance?.id === data.instanceId) {
-        setCurrentQrCode(data.qr)
-      }
+    try {
+      const supabase = createBrowserClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      )
+
+      const { error } = await supabase.from("whatsapp_instances").delete().eq("id", instanceId)
+
+      if (error) throw error
+      router.refresh()
+    } catch (err) {
+      console.error("Erro ao deletar:", err)
     }
+  }
 
-    const handleStatus = (data: { instanceId: string; status: string }) => {
-      refetchInstances()
-      if (data.status === "connected" && qrDialogInstance?.id === data.instanceId) {
-        setQrDialogInstance(null)
-        setCurrentQrCode(null)
-      }
-    }
+  if (!projectId) {
+    return (
+      <div className="p-8">
+        <p>Selecione um projeto para ver as instâncias</p>
+      </div>
+    )
+  }
 
-    socket.on("qr", handleQr)
-    socket.on("instance_status", handleStatus)
-    socket.on("message_received", refetchInstances)
-
-    return () => {
-      socket.off("qr", handleQr)
-      socket.off("instance_status", handleStatus)
-      socket.off("message_received", refetchInstances)
-    }
-  }, [socket, qrDialogInstance, refetchInstances])
-
-  const handleQrCodeClick = useCallback((instance: WhatsAppInstance) => {
-    setQrDialogInstance(instance)
-    setCurrentQrCode(instance.last_qr)
-  }, [])
-
-  const handleQrDialogClose = useCallback((open: boolean) => {
-    if (!open) {
-      setQrDialogInstance(null)
-      setCurrentQrCode(null)
-    }
-  }, [])
+  if (loading) {
+    return <div className="p-8">Carregando instâncias...</div>
+  }
 
   return (
-    <div className="flex min-h-screen flex-col">
-      <header className="border-b bg-background">
-        <div className="container mx-auto flex h-16 items-center justify-between px-4">
-          <h1 className="text-xl font-bold">WhatsApp SaaS</h1>
-          <nav className="flex items-center gap-4">
-            <Button variant="ghost" asChild>
-              <Link href="/dashboard">Dashboard</Link>
-            </Button>
-            <Button variant="ghost" asChild>
-              <Link href="/instances">Instâncias</Link>
-            </Button>
-          </nav>
+    <div className="min-h-screen bg-background">
+      <div className="container py-8">
+        <div className="flex justify-between items-center mb-8">
+          <h1 className="text-3xl font-bold">Instâncias</h1>
+          <CreateInstanceDialog onCreateInstance={handleCreateInstance} />
         </div>
-      </header>
 
-      <main className="flex-1 container mx-auto py-8 px-4">
-        <div className="flex flex-col gap-8">
-          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-            <div>
-              <h2 className="text-3xl font-bold tracking-tight">Instâncias WhatsApp</h2>
-              <p className="text-muted-foreground">Gerencie suas conexões do WhatsApp</p>
-            </div>
-            <div className="flex items-center gap-4">
-              <div className="w-full md:w-64">
-                {!projectsLoading && (
-                  <ProjectSelector
-                    projects={projects}
-                    selectedProjectId={selectedProjectId}
-                    onSelectProject={setSelectedProjectId}
-                    onProjectCreated={refetchProjects}
-                  />
-                )}
-              </div>
-              <Button onClick={() => setShowCreateDialog(true)} disabled={!selectedProjectId}>
-                <Plus className="mr-2 h-4 w-4" />
-                Nova instância
-              </Button>
-            </div>
+        {instances.length === 0 ? (
+          <div className="text-center py-12">
+            <p className="text-muted-foreground mb-4">Nenhuma instância criada</p>
+            <CreateInstanceDialog onCreateInstance={handleCreateInstance} />
           </div>
+        ) : (
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            {instances.map((instance) => (
+              <InstanceCard
+                key={instance.id}
+                instance={instance}
+                onShowQR={() => {
+                  setSelectedInstance(instance)
+                  setShowQRDialog(true)
+                }}
+                onDelete={() => handleDeleteInstance(instance.id)}
+              />
+            ))}
+          </div>
+        )}
 
-          {instancesLoading ? (
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-              {[1, 2, 3].map((i) => (
-                <div key={i} className="h-48 rounded-lg border bg-card animate-pulse" />
-              ))}
-            </div>
-          ) : instances.length > 0 ? (
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-              {instances.map((instance) => (
-                <InstanceCard
-                  key={instance.id}
-                  instance={instance}
-                  onRefresh={refetchInstances}
-                  onQrCodeClick={handleQrCodeClick}
-                />
-              ))}
-            </div>
-          ) : (
-            <div className="rounded-lg border border-dashed p-12 text-center">
-              <h3 className="text-lg font-semibold mb-2">Nenhuma instância encontrada</h3>
-              <p className="text-muted-foreground mb-4">Crie sua primeira instância para começar</p>
-              <Button onClick={() => setShowCreateDialog(true)} disabled={!selectedProjectId}>
-                <Plus className="mr-2 h-4 w-4" />
-                Criar primeira instância
-              </Button>
-            </div>
-          )}
-        </div>
-      </main>
-
-      {selectedProjectId && (
-        <CreateInstanceDialog
-          open={showCreateDialog}
-          onOpenChange={setShowCreateDialog}
-          projectId={selectedProjectId}
-          onSuccess={refetchInstances}
-        />
-      )}
-
-      <QrCodeDialog
-        instance={qrDialogInstance}
-        open={!!qrDialogInstance}
-        onOpenChange={handleQrDialogClose}
-        qrCode={currentQrCode}
-      />
+        {selectedInstance && (
+          <QRCodeDialog
+            open={showQRDialog}
+            onOpenChange={setShowQRDialog}
+            qrCode={selectedInstance.last_qr}
+            instanceName={selectedInstance.name}
+          />
+        )}
+      </div>
     </div>
   )
 }

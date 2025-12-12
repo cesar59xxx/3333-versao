@@ -1,18 +1,14 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
-import { Button } from "@/components/ui/button"
-import { ContactList } from "@/components/chat/contact-list"
-import { ChatHeader } from "@/components/chat/chat-header"
-import { MessageList } from "@/components/chat/message-list"
-import { MessageInput } from "@/components/chat/message-input"
-import { useContacts } from "@/lib/hooks/use-contacts"
+import { useState, useEffect } from "react"
 import { useMessages } from "@/lib/hooks/use-messages"
-import { useSocket } from "@/lib/hooks/use-socket"
-import { apiRequest } from "@/lib/api/client"
-import type { Message } from "@/lib/types/database"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Card } from "@/components/ui/card"
+import { createBrowserClient } from "@supabase/ssr"
+import { ArrowLeft, Send } from "lucide-react"
 import Link from "next/link"
-import { ArrowLeft } from "lucide-react"
+import type { Contact } from "@/lib/types"
 
 interface ChatContentProps {
   instanceId: string
@@ -20,105 +16,163 @@ interface ChatContentProps {
 }
 
 export function ChatContent({ instanceId, instanceName }: ChatContentProps) {
+  const [contacts, setContacts] = useState<Contact[]>([])
   const [selectedContactId, setSelectedContactId] = useState<string | null>(null)
-  const { contacts, loading: contactsLoading, refetch: refetchContacts } = useContacts(instanceId)
-  const {
-    messages,
-    loading: messagesLoading,
-    addMessage,
-    refetch: refetchMessages,
-  } = useMessages(instanceId, selectedContactId)
-  const { socket } = useSocket()
+  const [messageInput, setMessageInput] = useState("")
+  const [contactsLoading, setContactsLoading] = useState(true)
 
-  const selectedContact = contacts.find((c) => c.id === selectedContactId) ?? null
+  const { messages, loading: messagesLoading, sendMessage } = useMessages(instanceId, selectedContactId)
 
-  // Listen for new messages via Socket.IO
+  // Fetch contacts
   useEffect(() => {
-    if (!socket) return
+    async function fetchContacts() {
+      try {
+        const supabase = createBrowserClient(
+          process.env.NEXT_PUBLIC_SUPABASE_URL!,
+          process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+        )
 
-    const handleMessageReceived = (data: { instanceId: string; contactId: string; message: Message }) => {
-      if (data.instanceId === instanceId) {
-        refetchContacts()
-        if (data.contactId === selectedContactId) {
-          addMessage(data.message)
-        }
+        const { data, error } = await supabase
+          .from("contacts")
+          .select("*")
+          .eq("instance_id", instanceId)
+          .order("last_message_at", { ascending: false, nullsFirst: false })
+
+        if (error) throw error
+        setContacts(data || [])
+      } catch (err) {
+        console.error("Erro ao buscar contatos:", err)
+      } finally {
+        setContactsLoading(false)
       }
     }
 
-    socket.on("message_received", handleMessageReceived)
+    fetchContacts()
+  }, [instanceId])
 
-    return () => {
-      socket.off("message_received", handleMessageReceived)
+  // Auto-select first contact
+  useEffect(() => {
+    if (contacts.length > 0 && !selectedContactId) {
+      setSelectedContactId(contacts[0].id)
     }
-  }, [socket, instanceId, selectedContactId, addMessage, refetchContacts])
+  }, [contacts, selectedContactId])
 
-  const handleSendMessage = useCallback(
-    async (content: string) => {
-      if (!selectedContactId) return
+  async function handleSendMessage() {
+    if (!messageInput.trim() || !selectedContactId) return
 
-      const message = await apiRequest<Message>(`/api/instances/${instanceId}/messages`, {
-        method: "POST",
-        body: JSON.stringify({
-          contactId: selectedContactId,
-          content,
-        }),
-      })
+    const success = await sendMessage(messageInput)
+    if (success) {
+      setMessageInput("")
+    }
+  }
 
-      addMessage(message)
-      refetchContacts()
-    },
-    [instanceId, selectedContactId, addMessage, refetchContacts],
-  )
+  const selectedContact = contacts.find((c) => c.id === selectedContactId)
 
   return (
-    <div className="flex h-screen flex-col">
-      <header className="border-b bg-background">
+    <div className="flex h-screen flex-col bg-background">
+      {/* Header */}
+      <header className="border-b bg-card">
         <div className="container mx-auto flex h-16 items-center justify-between px-4">
           <div className="flex items-center gap-4">
-            <Button variant="ghost" size="icon" asChild>
-              <Link href="/instances">
+            <Link href="/instances">
+              <Button variant="ghost" size="icon">
                 <ArrowLeft className="h-5 w-5" />
-              </Link>
-            </Button>
-            <h1 className="text-xl font-bold">WhatsApp SaaS</h1>
+              </Button>
+            </Link>
+            <div>
+              <h1 className="font-bold">{instanceName}</h1>
+              <p className="text-xs text-muted-foreground">WhatsApp</p>
+            </div>
           </div>
-          <nav className="flex items-center gap-4">
-            <Button variant="ghost" asChild>
-              <Link href="/dashboard">Dashboard</Link>
-            </Button>
-            <Button variant="ghost" asChild>
-              <Link href="/instances">Instâncias</Link>
-            </Button>
-          </nav>
         </div>
       </header>
 
       <div className="flex flex-1 overflow-hidden">
-        <div className="w-80 flex-shrink-0 border-r">
+        {/* Contacts Sidebar */}
+        <div className="w-72 border-r bg-muted/30 overflow-y-auto">
           {contactsLoading ? (
-            <div className="flex h-full items-center justify-center">
-              <p className="text-muted-foreground">Carregando contatos...</p>
+            <div className="flex items-center justify-center h-full">
+              <p className="text-sm text-muted-foreground">Carregando contatos...</p>
+            </div>
+          ) : contacts.length === 0 ? (
+            <div className="flex items-center justify-center h-full">
+              <p className="text-sm text-muted-foreground">Nenhum contato</p>
             </div>
           ) : (
-            <ContactList
-              contacts={contacts}
-              selectedContactId={selectedContactId}
-              onSelectContact={setSelectedContactId}
-            />
+            <div className="divide-y">
+              {contacts.map((contact) => (
+                <button
+                  key={contact.id}
+                  onClick={() => setSelectedContactId(contact.id)}
+                  className={`w-full px-4 py-3 text-left hover:bg-accent transition-colors ${
+                    selectedContactId === contact.id ? "bg-primary/10" : ""
+                  }`}
+                >
+                  <p className="font-medium text-sm">{contact.name || contact.phone_number}</p>
+                  <p className="text-xs text-muted-foreground truncate">{contact.wa_id}</p>
+                </button>
+              ))}
+            </div>
           )}
         </div>
 
+        {/* Chat Area */}
         <div className="flex flex-1 flex-col">
-          <ChatHeader contact={selectedContact} instanceName={instanceName} />
-
-          {selectedContactId ? (
+          {selectedContact ? (
             <>
-              <MessageList messages={messages} loading={messagesLoading} />
-              <MessageInput onSendMessage={handleSendMessage} />
+              {/* Chat Header */}
+              <div className="border-b bg-card px-4 py-3">
+                <p className="font-medium">{selectedContact.name || selectedContact.phone_number}</p>
+                <p className="text-xs text-muted-foreground">{selectedContact.wa_id}</p>
+              </div>
+
+              {/* Messages */}
+              <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                {messagesLoading ? (
+                  <div className="flex items-center justify-center h-full">
+                    <p className="text-sm text-muted-foreground">Carregando mensagens...</p>
+                  </div>
+                ) : messages.length === 0 ? (
+                  <div className="flex items-center justify-center h-full">
+                    <p className="text-sm text-muted-foreground">Nenhuma mensagem</p>
+                  </div>
+                ) : (
+                  messages.map((msg) => (
+                    <div
+                      key={msg.id}
+                      className={`flex ${msg.direction === "outbound" ? "justify-end" : "justify-start"}`}
+                    >
+                      <Card
+                        className={`max-w-xs px-4 py-2 ${msg.direction === "outbound" ? "bg-primary text-primary-foreground" : ""}`}
+                      >
+                        <p className="text-sm">{msg.content}</p>
+                        <p className="text-xs opacity-70 mt-1">
+                          {new Date(msg.created_at).toLocaleTimeString("pt-BR")}
+                        </p>
+                      </Card>
+                    </div>
+                  ))
+                )}
+              </div>
+
+              {/* Input */}
+              <div className="border-t bg-card p-4">
+                <div className="flex gap-2">
+                  <Input
+                    placeholder="Digite uma mensagem..."
+                    value={messageInput}
+                    onChange={(e) => setMessageInput(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && handleSendMessage()}
+                  />
+                  <Button onClick={handleSendMessage} size="icon">
+                    <Send className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
             </>
           ) : (
-            <div className="flex flex-1 items-center justify-center text-muted-foreground">
-              <p>Selecione uma conversa para começar</p>
+            <div className="flex items-center justify-center flex-1">
+              <p className="text-muted-foreground">Selecione um contato para começar</p>
             </div>
           )}
         </div>

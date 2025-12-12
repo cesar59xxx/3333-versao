@@ -1,50 +1,31 @@
 "use client"
 
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import type { WhatsAppInstance } from "@/lib/types/database"
-import { Loader2 } from "lucide-react"
+import Image from "next/image"
 
-interface QrCodeDialogProps {
-  instance: WhatsAppInstance | null
+interface QRCodeDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   qrCode: string | null
+  instanceName: string
 }
 
-export function QrCodeDialog({ instance, open, onOpenChange, qrCode }: QrCodeDialogProps) {
+export function QRCodeDialog({ open, onOpenChange, qrCode, instanceName }: QRCodeDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="max-w-sm">
         <DialogHeader>
-          <DialogTitle>Escanear QR Code</DialogTitle>
-          <DialogDescription>
-            Abra o WhatsApp no seu celular e escaneie o QR code para conectar a instância{" "}
-            <strong>{instance?.name}</strong>.
-          </DialogDescription>
+          <DialogTitle>QR Code - {instanceName}</DialogTitle>
+          <DialogDescription>Escaneie o código QR com seu WhatsApp para conectar a instância</DialogDescription>
         </DialogHeader>
-        <div className="flex flex-col items-center justify-center py-8">
+        <div className="flex justify-center">
           {qrCode ? (
-            <div className="rounded-lg border bg-white p-4">
-              <img
-                src={qrCode || "/placeholder.svg"}
-                alt="QR Code WhatsApp"
-                width={256}
-                height={256}
-                className="rounded"
-              />
-            </div>
+            <Image src={qrCode || "/placeholder.svg"} alt="QR Code" width={256} height={256} className="border p-2" />
           ) : (
-            <div className="flex flex-col items-center gap-4">
-              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-              <p className="text-sm text-muted-foreground">Gerando QR code...</p>
+            <div className="w-64 h-64 bg-muted flex items-center justify-center rounded-lg">
+              <p className="text-sm text-muted-foreground">Carregando QR Code...</p>
             </div>
           )}
-        </div>
-        <div className="space-y-1 text-center text-sm text-muted-foreground">
-          <p>1. Abra o WhatsApp no seu celular</p>
-          <p>2. Toque em Menu ou Configurações e selecione Aparelhos conectados</p>
-          <p>3. Toque em Conectar um aparelho</p>
-          <p>4. Aponte seu telefone para esta tela para capturar o código</p>
         </div>
       </DialogContent>
     </Dialog>

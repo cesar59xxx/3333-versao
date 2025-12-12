@@ -1,115 +1,74 @@
 "use client"
 
-import { useState, useEffect } from "react"
-import Link from "next/link"
-import { MessageCircle, Users, TrendingUp, DollarSign } from "lucide-react"
-import { Button } from "@/components/ui/button"
-import { MetricCard } from "@/components/dashboard/metric-card"
-import { ProjectSelector } from "@/components/dashboard/project-selector"
+import { useRouter } from "next/navigation"
 import { useProjects } from "@/lib/hooks/use-projects"
-import { useDashboardMetrics } from "@/lib/hooks/use-dashboard-metrics"
+import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Plus } from "lucide-react"
+import { useState } from "react"
+import { createBrowserClient } from "@supabase/ssr"
 
 export function DashboardContent() {
-  const { projects, loading: projectsLoading, refetch: refetchProjects } = useProjects()
-  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null)
-  const { metrics, loading: metricsLoading } = useDashboardMetrics(selectedProjectId)
+  const { projects, loading } = useProjects()
+  const router = useRouter()
+  const [isCreating, setIsCreating] = useState(false)
 
-  useEffect(() => {
-    if (projects.length > 0 && !selectedProjectId) {
-      setSelectedProjectId(projects[0].id)
+  async function handleCreateProject(name: string) {
+    setIsCreating(true)
+    try {
+      const supabase = createBrowserClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      )
+
+      const { error } = await supabase.from("projects").insert([{ name }])
+
+      if (error) throw error
+      router.refresh()
+    } finally {
+      setIsCreating(false)
     }
-  }, [projects, selectedProjectId])
-
-  const formatCurrency = (value: number) => {
-    return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value)
   }
 
-  const formatPercentage = (value: number) => {
-    return `${(value * 100).toFixed(1)}%`
+  if (loading) {
+    return <div className="p-8">Carregando...</div>
   }
 
   return (
-    <div className="flex min-h-screen flex-col">
-      <header className="border-b bg-background">
-        <div className="container mx-auto flex h-16 items-center justify-between px-4">
-          <h1 className="text-xl font-bold">WhatsApp SaaS</h1>
-          <nav className="flex items-center gap-4">
-            <Button variant="ghost" asChild>
-              <Link href="/dashboard">Dashboard</Link>
-            </Button>
-            <Button variant="ghost" asChild>
-              <Link href="/instances">Instâncias</Link>
-            </Button>
-          </nav>
+    <div className="min-h-screen bg-background">
+      <div className="container py-8">
+        <div className="flex justify-between items-center mb-8">
+          <h1 className="text-3xl font-bold">Projetos</h1>
+          <Button
+            onClick={() => {
+              const name = prompt("Nome do projeto:")
+              if (name) handleCreateProject(name)
+            }}
+          >
+            <Plus className="w-4 h-4 mr-2" />
+            Novo Projeto
+          </Button>
         </div>
-      </header>
 
-      <main className="flex-1 container mx-auto py-8 px-4">
-        <div className="flex flex-col gap-8">
-          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-            <div>
-              <h2 className="text-3xl font-bold tracking-tight">Dashboard</h2>
-              <p className="text-muted-foreground">Métricas e estatísticas do dia</p>
-            </div>
-            <div className="w-full md:w-64">
-              {!projectsLoading && (
-                <ProjectSelector
-                  projects={projects}
-                  selectedProjectId={selectedProjectId}
-                  onSelectProject={setSelectedProjectId}
-                  onProjectCreated={refetchProjects}
-                />
-              )}
-            </div>
-          </div>
-
-          {!selectedProjectId ? (
-            <div className="rounded-lg border border-dashed p-8 text-center">
-              <p className="text-muted-foreground">Selecione um projeto para ver as métricas</p>
-            </div>
-          ) : metricsLoading ? (
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-              {[1, 2, 3, 4].map((i) => (
-                <div key={i} className="h-32 rounded-lg border bg-card animate-pulse" />
-              ))}
-            </div>
-          ) : (
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-              <MetricCard
-                title="Taxa de Resposta"
-                value={formatPercentage(metrics.response_rate_today)}
-                icon={TrendingUp}
-                description="Contatos respondidos hoje"
-              />
-              <MetricCard
-                title="Mensagens Recebidas"
-                value={metrics.messages_received_today}
-                icon={MessageCircle}
-                description="Total de mensagens hoje"
-              />
-              <MetricCard
-                title="Contatos Únicos"
-                value={metrics.unique_contacts_today}
-                icon={Users}
-                description="Contatos ativos hoje"
-              />
-              <MetricCard
-                title="Vendas do Dia"
-                value={formatCurrency(metrics.sales_amount_today)}
-                icon={DollarSign}
-                description="Total de vendas hoje"
-              />
-            </div>
-          )}
-
-          {!projectsLoading && projects.length === 0 && (
-            <div className="rounded-lg border border-dashed p-8 text-center">
-              <h3 className="text-lg font-semibold mb-2">Nenhum projeto encontrado</h3>
-              <p className="text-muted-foreground mb-4">Crie seu primeiro projeto para começar</p>
-            </div>
-          )}
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+          {projects.map((project) => (
+            <Card
+              key={project.id}
+              className="cursor-pointer hover:shadow-lg transition-shadow"
+              onClick={() => router.push(`/instances?project=${project.id}`)}
+            >
+              <CardHeader>
+                <CardTitle>{project.name}</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-sm text-muted-foreground">
+                  Criado em {new Date(project.created_at).toLocaleDateString("pt-BR")}
+                </p>
+              </CardContent>
+            </Card>
+          ))}
         </div>
-      </main>
+      </div>
     </div>
   )
 }
