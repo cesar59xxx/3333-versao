@@ -1,0 +1,118 @@
+"use client"
+
+import { useState } from "react"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import { Phone, QrCode, AlertCircle, CheckCircle, Clock } from "lucide-react"
+import type { WhatsAppInstance } from "@/lib/types/database"
+import { apiRequest } from "@/lib/api/client"
+
+interface InstanceCardProps {
+  instance: WhatsAppInstance
+  onStartInstance: (instanceId: string) => void
+  onQrCodeClick: (instance: WhatsAppInstance) => void
+}
+
+const statusConfig = {
+  CREATED: {
+    label: "Criado",
+    icon: Clock,
+    variant: "secondary" as const,
+  },
+  QR_PENDING: {
+    label: "Aguardando QR",
+    icon: QrCode,
+    variant: "default" as const,
+  },
+  CONNECTED: {
+    label: "Conectado",
+    icon: CheckCircle,
+    variant: "default" as const,
+    className: "bg-primary text-primary-foreground",
+  },
+  DISCONNECTED: {
+    label: "Desconectado",
+    icon: AlertCircle,
+    variant: "secondary" as const,
+  },
+  ERROR: {
+    label: "Erro",
+    icon: AlertCircle,
+    variant: "destructive" as const,
+  },
+}
+
+export function InstanceCard({ instance, onStartInstance, onQrCodeClick }: InstanceCardProps) {
+  const [isLoading, setIsLoading] = useState(false)
+  const config = statusConfig[instance.status]
+  const Icon = config.icon
+
+  const handleStart = async () => {
+    setIsLoading(true)
+    try {
+      await apiRequest(`/api/instances/${instance.id}/start`, {
+        method: "POST",
+      })
+      onStartInstance(instance.id)
+    } catch (error) {
+      console.error("[v0] Error starting instance:", error)
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-start justify-between">
+          <div className="flex items-center gap-2">
+            <Phone className="h-5 w-5 text-muted-foreground" />
+            <CardTitle className="text-lg">{instance.name}</CardTitle>
+          </div>
+          <Badge variant={config.variant} className={config.className}>
+            <Icon className="mr-1 h-3 w-3" />
+            {config.label}
+          </Badge>
+        </div>
+      </CardHeader>
+      <CardContent>
+        <div className="flex flex-col gap-4">
+          {instance.phone_number && (
+            <div className="text-sm">
+              <span className="text-muted-foreground">Número: </span>
+              <span className="font-medium">{instance.phone_number}</span>
+            </div>
+          )}
+
+          {instance.last_connected_at && (
+            <div className="text-sm text-muted-foreground">
+              Última conexão: {new Date(instance.last_connected_at).toLocaleString("pt-BR")}
+            </div>
+          )}
+
+          <div className="flex gap-2">
+            {(instance.status === "CREATED" || instance.status === "DISCONNECTED" || instance.status === "ERROR") && (
+              <Button onClick={handleStart} disabled={isLoading} className="flex-1">
+                {isLoading ? "Iniciando..." : "Iniciar"}
+              </Button>
+            )}
+
+            {instance.status === "QR_PENDING" && (
+              <Button onClick={() => onQrCodeClick(instance)} className="flex-1">
+                <QrCode className="mr-2 h-4 w-4" />
+                Ver QR Code
+              </Button>
+            )}
+
+            {instance.status === "CONNECTED" && (
+              <Button variant="outline" asChild className="flex-1 bg-transparent">
+                <a href={`/instances/${instance.id}/chat`}>Abrir chat</a>
+              </Button>
+            )}
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
