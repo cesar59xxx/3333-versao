@@ -1,16 +1,17 @@
-import makeWASocket, {
-  useMultiFileAuthState,
+const makeWASocket = require("@whiskeysockets/baileys").default
+const {
+  useMultiFileAuthState: getMultiFileAuthState,
   DisconnectReason,
   fetchLatestBaileysVersion,
-} from "@whiskeysockets/baileys"
-import { Boom } from "@hapi/boom"
-import QRCode from "qrcode"
-import pino from "pino"
-import path from "path"
-import fs from "fs"
-import { supabase } from "../config/supabase.js"
+} = require("@whiskeysockets/baileys")
+const { Boom } = require("@hapi/boom")
+const QRCode = require("qrcode")
+const pino = require("pino")
+const path = require("path")
+const fs = require("fs")
+const { supabase } = require("../config/supabase")
 
-export class ClientManager {
+class ClientManager {
   constructor(io) {
     this.clients = new Map()
     this.io = io
@@ -26,7 +27,7 @@ export class ClientManager {
     return new Promise(async (resolve, reject) => {
       try {
         const sessionPath = path.join(this.sessionsDir, `session-${instanceId}`)
-        const { state, saveCreds } = await useMultiFileAuthState(sessionPath)
+        const { state, saveCreds } = await getMultiFileAuthState(sessionPath)
         const { version } = await fetchLatestBaileysVersion()
 
         const socket = makeWASocket({
@@ -211,3 +212,5 @@ export class ClientManager {
     }
   }
 }
+
+module.exports = { ClientManager }

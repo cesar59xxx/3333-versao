@@ -1,4 +1,12 @@
-import { createClient } from "@supabase/supabase-js"
-import { config } from "./env.js"
+const { createClient } = require("@supabase/supabase-js")
 
-export const supabase = createClient(config.supabase.url, config.supabase.serviceRoleKey)
+const supabaseUrl = process.env.SUPABASE_URL
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+
+if (!supabaseUrl || !supabaseServiceKey) {
+  console.error("Missing Supabase credentials")
+}
+
+const supabase = createClient(supabaseUrl, supabaseServiceKey)
+
+module.exports = { supabase }
