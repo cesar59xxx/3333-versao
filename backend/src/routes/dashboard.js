@@ -1,87 +1,110 @@
-import express from "express"
-import { authMiddleware } from "../middleware/auth.js"
-import { supabase } from "../config/supabase.js"
+const express = require("express")
+const { createClient } = require("@supabase/supabase-js")
 
-export function createDashboardRouter() {
-  const router = express.Router()
+const router = express.Router()
 
-  // Get dashboard metrics
-  router.get("/metrics", authMiddleware, async (req, res) => {
-    try {
-      const userId = req.user?.id
-      if (!userId) {
-        return res.status(401).json({ error: "User not authenticated" })
-      }
+const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY)
 
-      const today = new Date().toISOString().split("T")[0]
+// Get dashboard metrics
+router.get("/", async (req, res) => {
+  try {
+    const userId = req.userId
 
-      const { data: instances } = await supabase.from("whatsapp_instances").select("id").eq("user_id", userId)
+    // Get user's projects first
+    const { data: projects, error: projectsError } = await supabase.from("projects").select("id").eq("owner_id", userId)
 
-      const instanceIds = instances?.map((i) => i.id) || []
-
-      if (instanceIds.length === 0) {
-        return res.json({
-          totalMessages: 0,
-          messagesReceived: 0,
-          messagesSent: 0,
-          activeContacts: 0,
-          totalContacts: 0,
-          connectedInstances: 0,
-          totalInstances: 0,
-        })
-      }
-
-      const { count: totalMessages } = await supabase
-        .from("messages")
-        .select("*", { count: "exact", head: true })
-        .in("instance_id", instanceIds)
-        .gte("created_at", today)
-
-      const { count: messagesReceived } = await supabase
-        .from("messages")
-        .select("*", { count: "exact", head: true })
-        .in("instance_id", instanceIds)
-        .eq("direction", "incoming")
-        .gte("created_at", today)
-
-      const { count: messagesSent } = await supabase
-        .from("messages")
-        .select("*", { count: "exact", head: true })
-        .in("instance_id", instanceIds)
-        .eq("direction", "outgoing")
-        .gte("created_at", today)
-
-      const { count: totalContacts } = await supabase
-        .from("contacts")
-        .select("*", { count: "exact", head: true })
-        .in("instance_id", instanceIds)
-
-      const { count: activeContacts } = await supabase
-        .from("contacts")
-        .select("*", { count: "exact", head: true })
-        .in("instance_id", instanceIds)
-        .gte("last_message_at", today)
-
-      const { count: connectedInstances } = await supabase
-        .from("whatsapp_instances")
-        .select("*", { count: "exact", head: true })
-        .eq("user_id", userId)
-        .eq("status", "connected")
-
-      res.json({
-        totalMessages: totalMessages || 0,
-        messagesReceived: messagesReceived || 0,
-        messagesSent: messagesSent || 0,
-        activeContacts: activeContacts || 0,
-        totalContacts: totalContacts || 0,
-        connectedInstances: connectedInstances || 0,
-        totalInstances: instanceIds.length,
-      })
-    } catch (error) {
-      console.error("Error fetching metrics:", error)
-      res.status(500).json({ error: "Failed to fetch metrics" })
+    if (projectsError) {
+      console.error("Error fetching projects:", projectsError)
+      return res.status(500).json({ error: "Failed to fetch projects" })
     }
-  })
 
-  return router
-}
+    if (!projects || projects.length === 0) {
+      return res.json({
+        totalInstances: 0,
+        connectedInstances: 0,
+        totalMessages: 0,
+        totalContacts: 0,
+        messagesLast24h: 0,
+        messagesLast7d: 0,
+      })
+    }
+
+    const projectIds = projects.map((p) => p.id)
+
+    // Get instances for user's projects
+    const { data: instances, error: instancesError } = await supabase
+      .from("whatsapp_instances")
+      .select("id, status")
+      .in("project_id", projectIds)
+
+    if (instancesError) {
+      console.error("Error fetching instances:", instancesError)
+      return res.status(500).json({ error: "Failed to fetch instances" })
+    }
+
+    const instanceIds = instances?.map((i) => i.id) || []
+    const totalInstances = instances?.length || 0
+    const connectedInstances = instances?.filter((i) => i.status === "connected").length || 0
+
+    let totalMessages = 0
+    let totalContacts = 0
+    let messagesLast24h = 0
+    let messagesLast7d = 0
+
+    if (instanceIds.length > 0) {
+      // Get total messages
+      const { count: msgCount } = await supabase
+        .from("messages")
+        .select("*", { count: "exact", head: true })
+        .in("instance_id", instanceIds)
+
+      totalMessages = msgCount || 0
+
+      // Get total contacts
+      const { count: contactCount } = await supabase
+        .from("contacts")
+        .select("*", { count: "exact", head: true })
+        .in("instance_id", instanceIds)
+
+      totalContacts = contactCount || 0
+
+      // Get messages last 24h
+      const last24h = new Date()
+      last24h.setHours(last24h.getHours() - 24)
+
+      const { count: msg24h } = await supabase
+        .from("messages")
+        .select("*", { count: "exact", head: true })
+        .in("instance_id", instanceIds)
+        .gte("created_at", last24h.toISOString())
+
+      messagesLast24h = msg24h || 0
+
+      // Get messages last 7 days
+      const last7d = new Date()
+      last7d.setDate(last7d.getDate() - 7)
+
+      const { count: msg7d } = await supabase
+        .from("messages")
+        .select("*", { count: "exact", head: true })
+        .in("instance_id", instanceIds)
+        .gte("created_at", last7d.toISOString())
+
+      messagesLast7d = msg7d || 0
+    }
+
+    res.json({
+      totalInstances,
+      connectedInstances,
+      totalMessages,
+      totalContacts,
+      messagesLast24h,
+      messagesLast7d,
+    })
+  } catch (error) {
+    console.error("Error fetching dashboard:", error)
+    res.status(500).json({ error: "Failed to fetch dashboard metrics" })
+  }
+})
+
+module.exports = router

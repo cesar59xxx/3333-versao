@@ -1,130 +1,95 @@
-import express from "express"
-import { authMiddleware } from "../middleware/auth.js"
-import { supabase } from "../config/supabase.js"
+const express = require("express")
+const { createClient } = require("@supabase/supabase-js")
 
-export function createMessagesRouter(clientManager) {
-  const router = express.Router()
+const router = express.Router()
 
-  // Get messages for a contact
-  router.get("/:instanceId/:contactId", authMiddleware, async (req, res) => {
-    try {
-      const userId = req.user?.id
-      if (!userId) {
-        return res.status(401).json({ error: "User not authenticated" })
-      }
+const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY)
 
-      const { instanceId, contactId } = req.params
+// Get messages for an instance
+router.get("/:instanceId", async (req, res) => {
+  try {
+    const userId = req.userId
+    const instanceId = req.params.instanceId
+    const { contactId, limit = 50, offset = 0 } = req.query
 
-      const { data: instance, error: instanceError } = await supabase
-        .from("whatsapp_instances")
-        .select("*")
-        .eq("id", instanceId)
-        .eq("user_id", userId)
-        .single()
+    // Verify ownership through project
+    const { data: instance, error: instanceError } = await supabase
+      .from("whatsapp_instances")
+      .select(`
+        id,
+        projects!inner(owner_id)
+      `)
+      .eq("id", instanceId)
+      .eq("projects.owner_id", userId)
+      .single()
 
-      if (instanceError || !instance) {
-        return res.status(404).json({ error: "Instance not found" })
-      }
+    if (instanceError || !instance) {
+      return res.status(404).json({ error: "Instance not found" })
+    }
 
-      const { data: messages, error } = await supabase
-        .from("messages")
-        .select("*")
-        .eq("instance_id", instanceId)
-        .eq("contact_id", contactId)
-        .order("created_at", { ascending: true })
+    // Build query
+    let query = supabase
+      .from("messages")
+      .select("*, contacts(name, phone_number)")
+      .eq("instance_id", instanceId)
+      .order("created_at", { ascending: false })
+      .range(Number.parseInt(offset), Number.parseInt(offset) + Number.parseInt(limit) - 1)
 
-      if (error) throw error
+    if (contactId) {
+      query = query.eq("contact_id", contactId)
+    }
 
-      res.json(messages || [])
-    } catch (error) {
+    const { data: messages, error } = await query
+
+    if (error) {
       console.error("Error fetching messages:", error)
-      res.status(500).json({ error: "Failed to fetch messages" })
+      return res.status(500).json({ error: "Failed to fetch messages" })
     }
-  })
 
-  // Send message
-  router.post("/send", authMiddleware, async (req, res) => {
-    try {
-      const userId = req.user?.id
-      if (!userId) {
-        return res.status(401).json({ error: "User not authenticated" })
-      }
+    res.json(messages)
+  } catch (error) {
+    console.error("Error fetching messages:", error)
+    res.status(500).json({ error: "Failed to fetch messages" })
+  }
+})
 
-      const { instanceId, contactId, content, phoneNumber } = req.body
+// Get contacts for an instance
+router.get("/:instanceId/contacts", async (req, res) => {
+  try {
+    const userId = req.userId
+    const instanceId = req.params.instanceId
 
-      const { data: instance, error: instanceError } = await supabase
-        .from("whatsapp_instances")
-        .select("*")
-        .eq("id", instanceId)
-        .eq("user_id", userId)
-        .single()
+    // Verify ownership through project
+    const { data: instance, error: instanceError } = await supabase
+      .from("whatsapp_instances")
+      .select(`
+        id,
+        projects!inner(owner_id)
+      `)
+      .eq("id", instanceId)
+      .eq("projects.owner_id", userId)
+      .single()
 
-      if (instanceError || !instance) {
-        return res.status(404).json({ error: "Instance not found" })
-      }
-
-      const result = await clientManager.sendMessage(instanceId, phoneNumber, content)
-
-      if (!result.success) {
-        return res.status(500).json({ error: "Failed to send message" })
-      }
-
-      const { data: message, error } = await supabase
-        .from("messages")
-        .insert({
-          instance_id: instanceId,
-          contact_id: contactId,
-          content,
-          direction: "outgoing",
-          status: "sent",
-        })
-        .select()
-        .single()
-
-      if (error) throw error
-
-      res.json(message)
-    } catch (error) {
-      console.error("Error sending message:", error)
-      res.status(500).json({ error: "Failed to send message" })
+    if (instanceError || !instance) {
+      return res.status(404).json({ error: "Instance not found" })
     }
-  })
 
-  // Get contacts for instance
-  router.get("/:instanceId/contacts", authMiddleware, async (req, res) => {
-    try {
-      const userId = req.user?.id
-      if (!userId) {
-        return res.status(401).json({ error: "User not authenticated" })
-      }
+    const { data: contacts, error } = await supabase
+      .from("contacts")
+      .select("*")
+      .eq("instance_id", instanceId)
+      .order("last_message_at", { ascending: false })
 
-      const { instanceId } = req.params
-
-      const { data: instance, error: instanceError } = await supabase
-        .from("whatsapp_instances")
-        .select("*")
-        .eq("id", instanceId)
-        .eq("user_id", userId)
-        .single()
-
-      if (instanceError || !instance) {
-        return res.status(404).json({ error: "Instance not found" })
-      }
-
-      const { data: contacts, error } = await supabase
-        .from("contacts")
-        .select("*")
-        .eq("instance_id", instanceId)
-        .order("last_message_at", { ascending: false })
-
-      if (error) throw error
-
-      res.json(contacts || [])
-    } catch (error) {
+    if (error) {
       console.error("Error fetching contacts:", error)
-      res.status(500).json({ error: "Failed to fetch contacts" })
+      return res.status(500).json({ error: "Failed to fetch contacts" })
     }
-  })
 
-  return router
-}
+    res.json(contacts)
+  } catch (error) {
+    console.error("Error fetching contacts:", error)
+    res.status(500).json({ error: "Failed to fetch contacts" })
+  }
+})
+
+module.exports = router

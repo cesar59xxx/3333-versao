@@ -54,6 +54,7 @@
     "express": "5.2.1",
     "input-otp": "1.4.1",
     "jimp": "latest",
+    "jsonwebtoken": "9.0.3",
     "link-preview-js": "latest",
     "lucide-react": "^0.454.0",
     "next": "16.0.10",

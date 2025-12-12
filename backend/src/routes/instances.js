@@ -1,264 +1,336 @@
-import express from "express"
-import { authMiddleware } from "../middleware/auth.js"
-import { supabase } from "../config/supabase.js"
+const express = require("express")
+const { createClient } = require("@supabase/supabase-js")
+const WhatsAppService = require("../services/whatsapp")
 
-export function createInstancesRouter(clientManager, io) {
-  const router = express.Router()
+const router = express.Router()
 
-  // Get all instances for user (through their projects)
-  router.get("/", authMiddleware, async (req, res) => {
-    try {
-      const userId = req.user?.id
-      if (!userId) {
-        return res.status(401).json({ error: "User not authenticated" })
-      }
+const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY)
 
-      const { data: projects, error: projectsError } = await supabase
+// Store active WhatsApp connections
+const whatsappInstances = new Map()
+
+// Get all instances for user (through projects)
+router.get("/", async (req, res) => {
+  try {
+    const userId = req.userId
+
+    // First get user's projects
+    const { data: projects, error: projectsError } = await supabase.from("projects").select("id").eq("owner_id", userId)
+
+    if (projectsError) {
+      console.error("Error fetching projects:", projectsError)
+      return res.status(500).json({ error: "Failed to fetch projects" })
+    }
+
+    if (!projects || projects.length === 0) {
+      return res.json([])
+    }
+
+    const projectIds = projects.map((p) => p.id)
+
+    // Get instances for user's projects
+    const { data: instances, error } = await supabase
+      .from("whatsapp_instances")
+      .select("*")
+      .in("project_id", projectIds)
+      .order("created_at", { ascending: false })
+
+    if (error) {
+      console.error("Error fetching instances:", error)
+      return res.status(500).json({ error: "Failed to fetch instances" })
+    }
+
+    // Add connection status from memory
+    const instancesWithStatus = instances.map((instance) => ({
+      ...instance,
+      is_connected: whatsappInstances.has(instance.id),
+    }))
+
+    res.json(instancesWithStatus)
+  } catch (error) {
+    console.error("Error fetching instances:", error)
+    res.status(500).json({ error: "Failed to fetch instances" })
+  }
+})
+
+// Create new instance
+router.post("/", async (req, res) => {
+  try {
+    const userId = req.userId
+    const { name, projectId } = req.body
+
+    if (!name) {
+      return res.status(400).json({ error: "Instance name is required" })
+    }
+
+    let targetProjectId = projectId
+
+    // If no projectId provided, get or create default project
+    if (!targetProjectId) {
+      // Check if user has any project
+      const { data: existingProjects, error: projectError } = await supabase
         .from("projects")
         .select("id")
         .eq("owner_id", userId)
+        .limit(1)
 
-      if (projectsError) throw projectsError
-
-      if (!projects || projects.length === 0) {
-        return res.json([])
+      if (projectError) {
+        console.error("Error checking projects:", projectError)
+        return res.status(500).json({ error: "Failed to check projects" })
       }
 
-      const projectIds = projects.map((p) => p.id)
-
-      const { data: instances, error } = await supabase
-        .from("whatsapp_instances")
-        .select("*")
-        .in("project_id", projectIds)
-        .order("created_at", { ascending: false })
-
-      if (error) throw error
-
-      const instancesWithStatus = (instances || []).map((instance) => ({
-        ...instance,
-        is_connected: clientManager.isConnected(instance.id),
-      }))
-
-      res.json(instancesWithStatus)
-    } catch (error) {
-      console.error("Error fetching instances:", error)
-      res.status(500).json({ error: "Failed to fetch instances" })
-    }
-  })
-
-  // Create new instance
-  router.post("/", authMiddleware, async (req, res) => {
-    try {
-      const userId = req.user?.id
-      if (!userId) {
-        return res.status(401).json({ error: "User not authenticated" })
-      }
-
-      const { name, project_id } = req.body
-
-      let targetProjectId = project_id
-
-      if (!targetProjectId) {
-        // Get or create a default project for the user
-        const { data: existingProject } = await supabase
-          .from("projects")
-          .select("id")
-          .eq("owner_id", userId)
-          .limit(1)
-          .single()
-
-        if (existingProject) {
-          targetProjectId = existingProject.id
-        } else {
-          // Create a default project
-          const { data: newProject, error: createError } = await supabase
-            .from("projects")
-            .insert({
-              owner_id: userId,
-              name: "Default Project",
-            })
-            .select()
-            .single()
-
-          if (createError) throw createError
-          targetProjectId = newProject.id
-        }
+      if (existingProjects && existingProjects.length > 0) {
+        targetProjectId = existingProjects[0].id
       } else {
-        // Verify user owns this project
-        const { data: project, error: projectError } = await supabase
+        // Create default project
+        const { data: newProject, error: createError } = await supabase
           .from("projects")
-          .select("id")
-          .eq("id", targetProjectId)
-          .eq("owner_id", userId)
+          .insert({
+            name: "Default Project",
+            owner_id: userId,
+          })
+          .select()
           .single()
 
-        if (projectError || !project) {
-          return res.status(403).json({ error: "Project not found or access denied" })
+        if (createError) {
+          console.error("Error creating project:", createError)
+          return res.status(500).json({ error: "Failed to create default project" })
         }
-      }
 
-      const { data: instance, error } = await supabase
-        .from("whatsapp_instances")
-        .insert({
-          project_id: targetProjectId,
-          name,
-          status: "disconnected",
-        })
-        .select()
+        targetProjectId = newProject.id
+      }
+    } else {
+      // Verify user owns the project
+      const { data: project, error: projectError } = await supabase
+        .from("projects")
+        .select("id")
+        .eq("id", targetProjectId)
+        .eq("owner_id", userId)
         .single()
 
-      if (error) throw error
-
-      res.json(instance)
-    } catch (error) {
-      console.error("Error creating instance:", error)
-      res.status(500).json({ error: "Failed to create instance" })
+      if (projectError || !project) {
+        return res.status(403).json({ error: "Project not found or access denied" })
+      }
     }
-  })
 
-  // Start instance and get QR code
-  router.post("/:id/start", authMiddleware, async (req, res) => {
-    try {
-      const userId = req.user?.id
-      if (!userId) {
-        return res.status(401).json({ error: "User not authenticated" })
-      }
-
-      const instanceId = req.params.id
-
-      const { data: instance, error } = await supabase
-        .from("whatsapp_instances")
-        .select("*, projects!inner(owner_id)")
-        .eq("id", instanceId)
-        .single()
-
-      if (error || !instance) {
-        return res.status(404).json({ error: "Instance not found" })
-      }
-
-      if (instance.projects.owner_id !== userId) {
-        return res.status(403).json({ error: "Access denied" })
-      }
-
-      const qrCode = await clientManager.initializeClient(instanceId, io)
-
-      res.json({ success: true, qrCode })
-    } catch (error) {
-      console.error("Error starting instance:", error)
-      res.status(500).json({ error: "Failed to start instance" })
-    }
-  })
-
-  // Stop instance
-  router.post("/:id/stop", authMiddleware, async (req, res) => {
-    try {
-      const userId = req.user?.id
-      if (!userId) {
-        return res.status(401).json({ error: "User not authenticated" })
-      }
-
-      const instanceId = req.params.id
-
-      const { data: instance, error } = await supabase
-        .from("whatsapp_instances")
-        .select("*, projects!inner(owner_id)")
-        .eq("id", instanceId)
-        .single()
-
-      if (error || !instance) {
-        return res.status(404).json({ error: "Instance not found" })
-      }
-
-      if (instance.projects.owner_id !== userId) {
-        return res.status(403).json({ error: "Access denied" })
-      }
-
-      await clientManager.stopClient(instanceId)
-
-      await supabase.from("whatsapp_instances").update({ status: "disconnected" }).eq("id", instanceId)
-
-      res.json({ success: true })
-    } catch (error) {
-      console.error("Error stopping instance:", error)
-      res.status(500).json({ error: "Failed to stop instance" })
-    }
-  })
-
-  // Get instance status
-  router.get("/:id/status", authMiddleware, async (req, res) => {
-    try {
-      const userId = req.user?.id
-      if (!userId) {
-        return res.status(401).json({ error: "User not authenticated" })
-      }
-
-      const instanceId = req.params.id
-
-      const { data: instance, error } = await supabase
-        .from("whatsapp_instances")
-        .select("*, projects!inner(owner_id)")
-        .eq("id", instanceId)
-        .single()
-
-      if (error || !instance) {
-        return res.status(404).json({ error: "Instance not found" })
-      }
-
-      if (instance.projects.owner_id !== userId) {
-        return res.status(403).json({ error: "Access denied" })
-      }
-
-      const isConnected = clientManager.isConnected(instanceId)
-
-      // Remove the projects relation from response
-      const { projects, ...instanceData } = instance
-
-      res.json({
-        ...instanceData,
-        is_connected: isConnected,
+    // Create instance with project_id
+    const { data: instance, error } = await supabase
+      .from("whatsapp_instances")
+      .insert({
+        name,
+        project_id: targetProjectId,
+        status: "disconnected",
       })
-    } catch (error) {
-      console.error("Error getting instance status:", error)
-      res.status(500).json({ error: "Failed to get instance status" })
+      .select()
+      .single()
+
+    if (error) {
+      console.error("Error creating instance:", error)
+      return res.status(500).json({ error: "Failed to create instance" })
     }
-  })
 
-  // Delete instance
-  router.delete("/:id", authMiddleware, async (req, res) => {
-    try {
-      const userId = req.user?.id
-      if (!userId) {
-        return res.status(401).json({ error: "User not authenticated" })
-      }
+    res.status(201).json(instance)
+  } catch (error) {
+    console.error("Error creating instance:", error)
+    res.status(500).json({ error: "Failed to create instance" })
+  }
+})
 
-      const instanceId = req.params.id
+// Get single instance
+router.get("/:id", async (req, res) => {
+  try {
+    const userId = req.userId
+    const instanceId = req.params.id
 
-      const { data: instance, error: fetchError } = await supabase
-        .from("whatsapp_instances")
-        .select("*, projects!inner(owner_id)")
-        .eq("id", instanceId)
-        .single()
+    // Get instance and verify ownership through project
+    const { data: instance, error } = await supabase
+      .from("whatsapp_instances")
+      .select(`
+        *,
+        projects!inner(owner_id)
+      `)
+      .eq("id", instanceId)
+      .eq("projects.owner_id", userId)
+      .single()
 
-      if (fetchError || !instance) {
-        return res.status(404).json({ error: "Instance not found" })
-      }
+    if (error || !instance) {
+      return res.status(404).json({ error: "Instance not found" })
+    }
 
-      if (instance.projects.owner_id !== userId) {
-        return res.status(403).json({ error: "Access denied" })
-      }
+    // Remove nested projects data from response
+    const { projects, ...instanceData } = instance
 
-      await clientManager.stopClient(instanceId)
+    res.json({
+      ...instanceData,
+      is_connected: whatsappInstances.has(instance.id),
+    })
+  } catch (error) {
+    console.error("Error fetching instance:", error)
+    res.status(500).json({ error: "Failed to fetch instance" })
+  }
+})
 
-      const { error } = await supabase.from("whatsapp_instances").delete().eq("id", instanceId)
+// Delete instance
+router.delete("/:id", async (req, res) => {
+  try {
+    const userId = req.userId
+    const instanceId = req.params.id
 
-      if (error) throw error
+    // Verify ownership through project
+    const { data: instance, error: fetchError } = await supabase
+      .from("whatsapp_instances")
+      .select(`
+        id,
+        projects!inner(owner_id)
+      `)
+      .eq("id", instanceId)
+      .eq("projects.owner_id", userId)
+      .single()
 
-      res.json({ success: true })
-    } catch (error) {
+    if (fetchError || !instance) {
+      return res.status(404).json({ error: "Instance not found" })
+    }
+
+    // Disconnect if connected
+    if (whatsappInstances.has(instanceId)) {
+      const wa = whatsappInstances.get(instanceId)
+      await wa.disconnect()
+      whatsappInstances.delete(instanceId)
+    }
+
+    // Delete from database
+    const { error } = await supabase.from("whatsapp_instances").delete().eq("id", instanceId)
+
+    if (error) {
       console.error("Error deleting instance:", error)
-      res.status(500).json({ error: "Failed to delete instance" })
+      return res.status(500).json({ error: "Failed to delete instance" })
     }
-  })
 
-  return router
-}
+    res.json({ message: "Instance deleted successfully" })
+  } catch (error) {
+    console.error("Error deleting instance:", error)
+    res.status(500).json({ error: "Failed to delete instance" })
+  }
+})
+
+// Connect instance (generate QR code)
+router.post("/:id/connect", async (req, res) => {
+  try {
+    const userId = req.userId
+    const instanceId = req.params.id
+    const io = req.app.get("io")
+
+    // Verify ownership through project
+    const { data: instance, error: fetchError } = await supabase
+      .from("whatsapp_instances")
+      .select(`
+        *,
+        projects!inner(owner_id)
+      `)
+      .eq("id", instanceId)
+      .eq("projects.owner_id", userId)
+      .single()
+
+    if (fetchError || !instance) {
+      return res.status(404).json({ error: "Instance not found" })
+    }
+
+    // Check if already connecting/connected
+    if (whatsappInstances.has(instanceId)) {
+      return res.json({ message: "Instance already connecting or connected" })
+    }
+
+    // Create WhatsApp service
+    const wa = new WhatsAppService(instanceId, supabase, io)
+    whatsappInstances.set(instanceId, wa)
+
+    // Start connection
+    await wa.connect()
+
+    res.json({ message: "Connection started, waiting for QR code" })
+  } catch (error) {
+    console.error("Error connecting instance:", error)
+    res.status(500).json({ error: "Failed to connect instance" })
+  }
+})
+
+// Disconnect instance
+router.post("/:id/disconnect", async (req, res) => {
+  try {
+    const userId = req.userId
+    const instanceId = req.params.id
+
+    // Verify ownership through project
+    const { data: instance, error: fetchError } = await supabase
+      .from("whatsapp_instances")
+      .select(`
+        id,
+        projects!inner(owner_id)
+      `)
+      .eq("id", instanceId)
+      .eq("projects.owner_id", userId)
+      .single()
+
+    if (fetchError || !instance) {
+      return res.status(404).json({ error: "Instance not found" })
+    }
+
+    // Disconnect if connected
+    if (whatsappInstances.has(instanceId)) {
+      const wa = whatsappInstances.get(instanceId)
+      await wa.disconnect()
+      whatsappInstances.delete(instanceId)
+    }
+
+    // Update status
+    await supabase.from("whatsapp_instances").update({ status: "disconnected" }).eq("id", instanceId)
+
+    res.json({ message: "Instance disconnected" })
+  } catch (error) {
+    console.error("Error disconnecting instance:", error)
+    res.status(500).json({ error: "Failed to disconnect instance" })
+  }
+})
+
+// Send message
+router.post("/:id/send", async (req, res) => {
+  try {
+    const userId = req.userId
+    const instanceId = req.params.id
+    const { to, message } = req.body
+
+    if (!to || !message) {
+      return res.status(400).json({ error: "Recipient and message are required" })
+    }
+
+    // Verify ownership through project
+    const { data: instance, error: fetchError } = await supabase
+      .from("whatsapp_instances")
+      .select(`
+        id,
+        projects!inner(owner_id)
+      `)
+      .eq("id", instanceId)
+      .eq("projects.owner_id", userId)
+      .single()
+
+    if (fetchError || !instance) {
+      return res.status(404).json({ error: "Instance not found" })
+    }
+
+    // Check if connected
+    if (!whatsappInstances.has(instanceId)) {
+      return res.status(400).json({ error: "Instance is not connected" })
+    }
+
+    const wa = whatsappInstances.get(instanceId)
+    const result = await wa.sendMessage(to, message)
+
+    res.json(result)
+  } catch (error) {
+    console.error("Error sending message:", error)
+    res.status(500).json({ error: "Failed to send message" })
+  }
+})
+
+module.exports = router
