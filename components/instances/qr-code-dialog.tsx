@@ -1,7 +1,6 @@
 "use client"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import type { WhatsAppInstance } from "@/lib/types/database"
-import { QRCodeSVG } from "qrcode.react"
 import { Loader2 } from "lucide-react"
 
 interface QrCodeDialogProps {
@@ -25,7 +24,7 @@ export function QrCodeDialog({ instance, open, onOpenChange, qrCode }: QrCodeDia
         <div className="flex flex-col items-center justify-center py-8">
           {qrCode ? (
             <div className="rounded-lg border bg-white p-4">
-              <QRCodeSVG value={qrCode} size={256} level="H" />
+              <img src={qrCode || "/placeholder.svg"} alt="QR Code" width={256} height={256} className="rounded" />
             </div>
           ) : (
             <div className="flex flex-col items-center gap-4">

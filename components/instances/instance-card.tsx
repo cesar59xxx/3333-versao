@@ -4,7 +4,7 @@ import { useState } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Phone, QrCode, AlertCircle, CheckCircle, Clock } from "lucide-react"
+import { Phone, QrCode, AlertCircle, CheckCircle, Clock, LogOut } from "lucide-react"
 import type { WhatsAppInstance } from "@/lib/types/database"
 import { apiRequest } from "@/lib/api/client"
 
@@ -45,6 +45,7 @@ const statusConfig = {
 
 export function InstanceCard({ instance, onStartInstance, onQrCodeClick }: InstanceCardProps) {
   const [isLoading, setIsLoading] = useState(false)
+  const [isLoggingOut, setIsLoggingOut] = useState(false)
   const config = statusConfig[instance.status]
   const Icon = config.icon
 
@@ -56,9 +57,23 @@ export function InstanceCard({ instance, onStartInstance, onQrCodeClick }: Insta
       })
       onStartInstance(instance.id)
     } catch (error) {
-      console.error("[v0] Error starting instance:", error)
+      console.error("[Baileys] Error starting instance:", error)
     } finally {
       setIsLoading(false)
+    }
+  }
+
+  const handleLogout = async () => {
+    setIsLoggingOut(true)
+    try {
+      await apiRequest(`/api/instances/${instance.id}/logout`, {
+        method: "POST",
+      })
+      onStartInstance(instance.id) // Trigger refetch
+    } catch (error) {
+      console.error("[Baileys] Error logging out instance:", error)
+    } finally {
+      setIsLoggingOut(false)
     }
   }
 
@@ -106,9 +121,14 @@ export function InstanceCard({ instance, onStartInstance, onQrCodeClick }: Insta
             )}
 
             {instance.status === "CONNECTED" && (
-              <Button variant="outline" asChild className="flex-1 bg-transparent">
-                <a href={`/instances/${instance.id}/chat`}>Abrir chat</a>
-              </Button>
+              <>
+                <Button variant="outline" asChild className="flex-1 bg-transparent">
+                  <a href={`/instances/${instance.id}/chat`}>Abrir chat</a>
+                </Button>
+                <Button variant="ghost" size="icon" onClick={handleLogout} disabled={isLoggingOut} title="Desconectar">
+                  <LogOut className="h-4 w-4" />
+                </Button>
+              </>
             )}
           </div>
         </div>
