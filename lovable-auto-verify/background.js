@@ -1,26 +1,48 @@
 // Background script for Lovable Auto Verify extension
 console.log("Lovable Auto Verify background script loaded");
 
-// Listen for installation to show welcome message
-chrome.runtime.onInstalled.addListener(() => {
-    console.log("Lovable Auto Verify extension installed");
-});
+// Properly handle runtime errors to prevent service worker registration failures
+try {
+    // Listen for installation to show welcome message
+    chrome.runtime.onInstalled.addListener(() => {
+        console.log("Lovable Auto Verify extension installed");
+        
+        // Set up context menu for quick access
+        chrome.contextMenus.create({
+            id: "lovableAutoVerify",
+            title: "Auto Verify Lovable Account",
+            contexts: ["page", "selection"]
+        });
+    });
 
-// Listen for messages from content scripts and popup
-chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-    if (request.action === "verificationStatusChanged") {
-        console.log("Account verification status changed:", request.status);
-        // You can add logic here to notify the user or update extension UI
-    }
-    
-    // Handle email monitoring request
-    if (request.action === "startEmailMonitoring") {
-        startEmailMonitoring(request.email);
-        sendResponse({status: "started"});
-    }
-    
-    return true; // Keep message channel open for async response
-});
+    // Listen for messages from content scripts and popup
+    chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+        if (request.action === "verificationStatusChanged") {
+            console.log("Account verification status changed:", request.status);
+            // You can add logic here to notify the user or update extension UI
+        }
+        
+        // Handle email monitoring request
+        if (request.action === "startEmailMonitoring") {
+            startEmailMonitoring(request.email);
+            sendResponse({status: "started"});
+        }
+        
+        return true; // Keep message channel open for async response
+    });
+
+    // Handle context menu click
+    chrome.contextMenus.onClicked.addListener((info, tab) => {
+        if (info.menuItemId === "lovableAutoVerify") {
+            // Send message to content script to start verification process
+            chrome.tabs.sendMessage(tab.id, {
+                action: "startVerificationProcess"
+            });
+        }
+    });
+} catch (error) {
+    console.error("Error in background script:", error);
+}
 
 // Function to monitor email for verification links
 async function startEmailMonitoring(email) {
@@ -131,22 +153,3 @@ function searchForVerificationLink() {
     // If no verification links found, return null
     return { link: null };
 }
-
-// Set up context menu for quick access
-chrome.runtime.onInstalled.addListener(() => {
-    chrome.contextMenus.create({
-        id: "lovableAutoVerify",
-        title: "Auto Verify Lovable Account",
-        contexts: ["page", "selection"]
-    });
-});
-
-// Handle context menu click
-chrome.contextMenus.onClicked.addListener((info, tab) => {
-    if (info.menuItemId === "lovableAutoVerify") {
-        // Send message to content script to start verification process
-        chrome.tabs.sendMessage(tab.id, {
-            action: "startVerificationProcess"
-        });
-    }
-});
